@@ -99,3 +99,41 @@ async def test_collect_open_proposals_stops_at_safety_ceiling():
 
     assert requested_pages == [1, 2]
     assert result["collection_complete"] is False
+
+
+@pytest.mark.asyncio
+async def test_collect_open_proposals_rejects_zero_reported_pages():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"data": [], "totalPaginas": 0})
+
+    client = PNCPClient(
+        "https://pncp.gov.br/api/consulta",
+        transport=httpx.MockTransport(handler),
+    )
+    from orion_api.pncp import PNCPError
+
+    with pytest.raises(PNCPError, match="quantidade inválida de páginas"):
+        await client.collect_open_proposals(end_date=date(2026, 11, 16), page_size=10)
+
+
+@pytest.mark.asyncio
+async def test_collect_open_proposals_marks_empty_page_as_complete_without_metadata():
+    requested_pages = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        page = int(request.url.params["pagina"])
+        requested_pages.append(page)
+        records = [{"numeroControlePNCP": "ID-1"}] if page == 1 else []
+        return httpx.Response(200, json={"data": records})
+
+    client = PNCPClient(
+        "https://pncp.gov.br/api/consulta",
+        transport=httpx.MockTransport(handler),
+    )
+    result = await client.collect_open_proposals(
+        end_date=date(2026, 11, 16),
+        page_size=10,
+    )
+
+    assert requested_pages == [1, 2]
+    assert result["collection_complete"] is True
