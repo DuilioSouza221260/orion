@@ -43,3 +43,59 @@ async def test_page_size_is_validated():
     client = PNCPClient("https://pncp.gov.br/api/consulta")
     with pytest.raises(ValueError, match="tamanho da página"):
         await client.open_proposals(end_date=date(2026, 11, 16), page_size=5)
+
+
+@pytest.mark.asyncio
+async def test_collect_open_proposals_follows_reported_pages():
+    requested_pages = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        page = int(request.url.params["pagina"])
+        requested_pages.append(page)
+        return httpx.Response(
+            200,
+            json={
+                "data": [{"numeroControlePNCP": f"ID-{page}"}],
+                "totalPaginas": 2,
+                "totalRegistros": 2,
+            },
+        )
+
+    client = PNCPClient(
+        "https://pncp.gov.br/api/consulta",
+        transport=httpx.MockTransport(handler),
+    )
+    result = await client.collect_open_proposals(
+        end_date=date(2026, 11, 16),
+        page_size=10,
+    )
+
+    assert requested_pages == [1, 2]
+    assert [item["numeroControlePNCP"] for item in result["data"]] == ["ID-1", "ID-2"]
+    assert result["collection_complete"] is True
+
+
+@pytest.mark.asyncio
+async def test_collect_open_proposals_stops_at_safety_ceiling():
+    requested_pages = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        page = int(request.url.params["pagina"])
+        requested_pages.append(page)
+        return httpx.Response(
+            200,
+            json={"data": [{"numeroControlePNCP": f"ID-{page}"}], "totalPaginas": 99},
+        )
+
+    client = PNCPClient(
+        "https://pncp.gov.br/api/consulta",
+        transport=httpx.MockTransport(handler),
+    )
+    result = await client.collect_open_proposals(
+        end_date=date(2026, 11, 16),
+        page_size=10,
+        max_pages=2,
+    )
+
+    assert requested_pages == [1, 2]
+    assert result["collection_complete"] is False
