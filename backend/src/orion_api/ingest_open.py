@@ -1,6 +1,6 @@
 import argparse
 import asyncio
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 from orion_api.config import settings
 from orion_api.db import require_session_factory
@@ -27,7 +27,7 @@ async def run(end_date: date, max_pages: int, page_size: int, uf: str | None) ->
     print(
         {
             "source": "PNCP",
-            "collected_at": datetime.now(timezone.utc).isoformat(),
+            "collected_at": datetime.now(UTC).isoformat(),
             "pages_collected": result["pages_collected"],
             "source_total_pages": result["source_total_pages"],
             "collection_complete": result["collection_complete"],
@@ -38,12 +38,13 @@ async def run(end_date: date, max_pages: int, page_size: int, uf: str | None) ->
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Coleta oportunidades abertas do PNCP para o ORION.")
-    parser.add_argument("--end-date", type=date.fromisoformat, default=date.today())
+    parser.add_argument("--end-date", type=date.fromisoformat, default=None)
     parser.add_argument("--max-pages", type=int, default=100)
     parser.add_argument("--page-size", type=int, default=50)
     parser.add_argument("--uf", type=str, default=None)
     args = parser.parse_args()
-    asyncio.run(run(args.end_date, args.max_pages, args.page_size, args.uf))
+    end_date = args.end_date or datetime.now(UTC).date()
+    asyncio.run(run(end_date, args.max_pages, args.page_size, args.uf))
 
 
 if __name__ == "__main__":
