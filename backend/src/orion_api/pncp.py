@@ -70,6 +70,54 @@ class PNCPClient:
             params["uf"] = uf.upper()
         return await self._get("/v1/contratacoes/proposta", params)
 
+    async def collect_open_proposals(
+        self,
+        *,
+        end_date: date,
+        page_size: int = 50,
+        modality_code: int | None = None,
+        uf: str | None = None,
+        max_pages: int = 100,
+    ) -> dict[str, Any]:
+        """Collect pages with a hard safety ceiling; preserve source pagination metadata."""
+        if max_pages < 1:
+            raise ValueError("O limite máximo de páginas deve ser maior ou igual a 1.")
+
+        records: list[dict[str, Any]] = []
+        page = 1
+        total_pages: int | None = None
+
+        while page <= max_pages:
+            payload = await self.open_proposals(
+                end_date=end_date,
+                page=page,
+                page_size=page_size,
+                modality_code=modality_code,
+                uf=uf,
+            )
+            page_records = payload.get("data", [])
+            if not isinstance(page_records, list):
+                raise PNCPError("O PNCP retornou uma lista de oportunidades em formato inválido.")
+            records.extend(item for item in page_records if isinstance(item, dict))
+
+            reported_pages = payload.get("totalPaginas")
+            if isinstance(reported_pages, int) and reported_pages >= 0:
+                total_pages = reported_pages
+
+            if total_pages is not None:
+                if page >= total_pages:
+                    break
+            elif not page_records:
+                break
+            page += 1
+
+        return {
+            "data": records,
+            "pages_collected": page if total_pages is None or page <= (total_pages or 0) else total_pages,
+            "source_total_pages": total_pages,
+            "collection_complete": total_pages is not None and page > total_pages,
+        }
+
     async def published(
         self,
         *,
