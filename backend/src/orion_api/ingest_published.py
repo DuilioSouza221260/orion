@@ -1,7 +1,7 @@
 import argparse
 import asyncio
 import sys
-from datetime import date, datetime, UTC
+from datetime import UTC, date, datetime
 from typing import Any
 
 from orion_api.config import settings
