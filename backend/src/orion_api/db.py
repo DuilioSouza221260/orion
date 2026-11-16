@@ -2,7 +2,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from orion_api.config import settings
 
-
 if not settings.database_url:
     engine = None
     SessionLocal = None
