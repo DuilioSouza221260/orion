@@ -87,3 +87,18 @@ async def test_published_opportunities_passes_filters_to_client(monkeypatch: pyt
         "page_size": 50,
         "uf": "mg",
     }
+
+
+@pytest.mark.asyncio
+async def test_reference_modalities_returns_active_catalog(monkeypatch: pytest.MonkeyPatch):
+    async def modalities(*, active_only: bool) -> list[dict[str, Any]]:
+        assert active_only is True
+        return [{"id": 6, "nome": "Pregão", "statusAtivo": True}]
+
+    monkeypatch.setattr(app.state, "pncp", SimpleNamespace(modalities=modalities), raising=False)
+
+    response = await request_api("/api/v1/reference/modalities")
+
+    assert response.status_code == 200
+    assert response.json()["count"] == 1
+    assert response.json()["data"][0]["id"] == 6
