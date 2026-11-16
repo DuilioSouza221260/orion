@@ -5,6 +5,7 @@ class Settings(BaseSettings):
     app_name: str = "ORION API"
     environment: str = "development"
     pncp_base_url: str = "https://pncp.gov.br/api/consulta"
+    pncp_domain_base_url: str = "https://pncp.gov.br/api/pncp"
     pncp_timeout_seconds: float = 25.0
     pncp_max_page_size: int = 50
     database_url: str | None = None
