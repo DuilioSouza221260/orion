@@ -16,7 +16,7 @@
 
 ## Evidência e limites
 
-A execução CI 43950757649 concluiu Lint (Ruff) e testes com sucesso, com 22 testes aprovados antes da inclusão da consulta de detalhes/documentos. A nova execução CI desta entrega deverá confirmar a contagem atualizada. Os testes são unitários/contratuais simulados: não confirmam conexão com PostgreSQL, consulta real ao PNCP nem homologação ponta a ponta.
+A execução CI 43952428742 concluiu Lint (Ruff) e testes com sucesso após a inclusão do adaptador S3 e dos testes de deduplicação. Os testes são simulados: não confirmam conexão com PostgreSQL, consulta real ao PNCP nem homologação ponta a ponta.
 
 ## Pendente
 
@@ -25,7 +25,7 @@ A execução CI 43950757649 concluiu Lint (Ruff) e testes com sucesso, com 22 te
 - [ ] Validar a semântica de todos os filtros e paginação nos endpoints atuais.
 - [ ] Homologar o catálogo e a varredura nacional contra o PNCP real; implementar captura global de atualizações.
 - [ ] Implementar agendamento, retentativas com backoff e checkpoint de coleta.
-- [ ] Validar persistência em PostgreSQL real e deduplicação em concorrência.
+- [ ] Validar persistência em PostgreSQL real e deduplicação em concorrência.\n- [ ] Homologar o comando de arquivamento com PNCP, PostgreSQL e bucket S3 reais.
 - [x] Consultar detalhes de contratação e listar metadados dos documentos publicados.
 - [x] Download controlado de editais/anexos pelo endpoint oficial do PNCP, validação de tamanho, cálculo SHA-256 na resposta e identificação da origem.\n- [x] Criar catálogo PostgreSQL de documentos com SHA-256 único, origem PNCP, referência externa, tipo, tamanho, backend e chave de armazenamento.\n- [x] Implementar adaptador S3 compatível com chave determinística por SHA-256, verificação de objeto existente e registro de metadados PostgreSQL por referência documental.
 - [ ] Implementar histórico de alterações completo da contratação e dos documentos.

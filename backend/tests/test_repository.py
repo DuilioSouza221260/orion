@@ -96,3 +96,42 @@ async def test_s3_storage_rejects_empty_documents():
     store = S3ObjectStore(bucket="orion-test", client=object())
     with pytest.raises(ValueError, match="documento vazio"):
         await store.store(content=b"", content_type="application/pdf")
+
+
+@pytest.mark.asyncio
+async def test_archive_pncp_document_uploads_and_registers_reference(monkeypatch):
+    from orion_api import storage
+
+    captured = {}
+
+    class FakeStore:
+        async def store(self, *, content, content_type):
+            assert content == b"edital"
+            assert content_type == "application/pdf"
+            return {
+                "sha256": "a" * 64,
+                "storage_key": "sha256/aa/" + "a" * 64,
+                "storage_backend": "s3",
+                "byte_size": 6,
+                "created": True,
+            }
+
+    async def fake_upsert(session, **kwargs):
+        captured.update(kwargs)
+
+    monkeypatch.setattr(storage, "upsert_document_asset", fake_upsert)
+    result = await storage.archive_pncp_document(
+        object(),
+        store=FakeStore(),
+        content=b"edital",
+        content_type="application/pdf",
+        external_id="10000000000003-2026-15",
+        document_sequence=3,
+        filename="edital.pdf",
+    )
+
+    assert result["source"] == "PNCP"
+    assert result["created"] is True
+    assert captured["external_id"] == "10000000000003-2026-15"
+    assert captured["document_sequence"] == 3
+    assert captured["sha256"] == "a" * 64
