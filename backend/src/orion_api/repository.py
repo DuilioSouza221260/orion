@@ -1,6 +1,6 @@
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy.dialects.postgresql import insert
@@ -18,7 +18,7 @@ async def upsert_pncp_opportunities(
     session: AsyncSession,
     records: list[dict[str, Any]],
 ) -> dict[str, int]:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     prepared_by_id: dict[str, dict[str, Any]] = {}
     skipped = 0
 
