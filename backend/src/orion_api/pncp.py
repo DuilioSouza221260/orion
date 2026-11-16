@@ -206,10 +206,12 @@ class PNCPClient:
             modality_id = modality["id"]
             try:
                 async def forward_page(
-                    page: int, page_records: list[dict[str, Any]]
+                    page: int,
+                    page_records: list[dict[str, Any]],
+                    current_modality_id: int = modality_id,
                 ) -> None:
                     if on_page is not None:
-                        await on_page(modality_id, page, page_records)
+                        await on_page(current_modality_id, page, page_records)
 
                 collection = await self.collect_published(
                     start_date=start_date,
@@ -498,10 +500,12 @@ class PNCPClient:
             modality_id = modality["id"]
             try:
                 async def forward_page(
-                    page: int, page_records: list[dict[str, Any]]
+                    page: int,
+                    page_records: list[dict[str, Any]],
+                    current_modality_id: int = modality_id,
                 ) -> None:
                     if on_page is not None:
-                        await on_page(modality_id, page, page_records)
+                        await on_page(current_modality_id, page, page_records)
 
                 collection = await self.collect_updated(
                     start_date=start_date,
