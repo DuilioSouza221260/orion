@@ -135,3 +135,59 @@ async def test_collect_open_proposals_marks_empty_page_as_complete_without_metad
 
     assert requested_pages == [1, 2]
     assert result["collection_complete"] is True
+
+
+@pytest.mark.asyncio
+async def test_collect_published_follows_pages_for_requested_modality():
+    requested = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        page = int(request.url.params["pagina"])
+        requested.append((page, request.url.params["codigoModalidadeContratacao"]))
+        return httpx.Response(
+            200,
+            json={
+                "data": [{"numeroControlePNCP": f"PUB-{page}"}],
+                "totalPaginas": 2,
+            },
+        )
+
+    client = PNCPClient(
+        "https://pncp.gov.br/api/consulta",
+        transport=httpx.MockTransport(handler),
+    )
+    result = await client.collect_published(
+        start_date=date(2026, 11, 1),
+        end_date=date(2026, 11, 16),
+        modality_code=6,
+        page_size=10,
+    )
+
+    assert requested == [(1, "6"), (2, "6")]
+    assert [item["numeroControlePNCP"] for item in result["data"]] == ["PUB-1", "PUB-2"]
+    assert result["collection_complete"] is True
+
+
+@pytest.mark.asyncio
+async def test_collect_published_reports_incomplete_at_safety_ceiling():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"data": [{"numeroControlePNCP": "PUB-1"}], "totalPaginas": 5},
+        )
+
+    client = PNCPClient(
+        "https://pncp.gov.br/api/consulta",
+        transport=httpx.MockTransport(handler),
+    )
+    result = await client.collect_published(
+        start_date=date(2026, 11, 1),
+        end_date=date(2026, 11, 16),
+        modality_code=6,
+        page_size=10,
+        max_pages=2,
+    )
+
+    assert result["pages_collected"] == 2
+    assert result["source_total_pages"] == 5
+    assert result["collection_complete"] is False
