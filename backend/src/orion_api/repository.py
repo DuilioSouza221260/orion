@@ -375,3 +375,115 @@ async def get_document_asset_versions(
             for version in versions
         ],
     }
+
+
+async def create_document_sync_operation(
+    session: AsyncSession, *, external_id: str
+) -> int:
+    from orion_api.models import DocumentSyncOperation
+
+    operation = DocumentSyncOperation(
+        external_id=external_id,
+        status="running",
+        listed=0,
+        archived=0,
+        removed=0,
+        failures=[],
+    )
+    session.add(operation)
+    await session.flush()
+    operation_id = operation.id
+    await session.commit()
+    return operation_id
+
+
+async def finish_document_sync_operation(
+    session: AsyncSession,
+    *,
+    operation_id: int,
+    result: dict[str, Any] | None = None,
+    error: str | None = None,
+) -> None:
+    from orion_api.models import DocumentSyncOperation
+
+    values: dict[str, Any] = {
+        "status": (
+            "completed" if result and result.get("complete")
+            else "partial" if result
+            else "failed"
+        ),
+        "finished_at": datetime.now(UTC),
+    }
+    if result:
+        values.update({
+            "listed": result.get("listed", 0),
+            "archived": result.get("archived", 0),
+            "removed": result.get("removed", 0),
+            "failures": result.get("failures", []),
+        })
+    elif error:
+        values["failures"] = [{"error": error[:1000]}]
+    await session.execute(
+        update(DocumentSyncOperation)
+        .where(DocumentSyncOperation.id == operation_id)
+        .values(**values)
+    )
+    await session.commit()
+
+
+async def get_document_sync_operation(
+    session: AsyncSession, *, operation_id: int
+) -> dict[str, Any] | None:
+    from orion_api.models import DocumentSyncOperation
+
+    result = await session.execute(
+        select(DocumentSyncOperation).where(DocumentSyncOperation.id == operation_id)
+    )
+    operation = result.scalar_one_or_none()
+    if operation is None:
+        return None
+    return _serialize_document_sync_operation(operation)
+
+
+async def list_document_sync_operations(
+    session: AsyncSession, *, page: int = 1, page_size: int = 20
+) -> dict[str, Any]:
+    from orion_api.models import DocumentSyncOperation
+
+    if page < 1 or not 1 <= page_size <= 100:
+        raise ValueError("Parâmetros de operações inválidos.")
+    count = await session.execute(select(func.count(DocumentSyncOperation.id)))
+    total = count.scalar_one()
+    rows = await session.execute(
+        select(DocumentSyncOperation)
+        .order_by(DocumentSyncOperation.started_at.desc(), DocumentSyncOperation.id.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+    operations = rows.scalars().all()
+    return {
+        "pagination": {
+            "page": page,
+            "page_size": page_size,
+            "total": total,
+            "pages": (total + page_size - 1) // page_size,
+        },
+        "operations": [_serialize_document_sync_operation(item) for item in operations],
+    }
+
+
+def _serialize_document_sync_operation(operation: Any) -> dict[str, Any]:
+    return {
+        "id": operation.id,
+        "source": operation.source,
+        "external_id": operation.external_id,
+        "status": operation.status,
+        "listed": operation.listed,
+        "archived": operation.archived,
+        "removed": operation.removed,
+        "failures": operation.failures,
+        "started_at": operation.started_at.isoformat(),
+        "finished_at": (
+            operation.finished_at.isoformat() if operation.finished_at else None
+        ),
+    }

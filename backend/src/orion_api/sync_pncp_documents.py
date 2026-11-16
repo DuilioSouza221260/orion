@@ -8,7 +8,7 @@ from typing import Any
 from orion_api.config import settings
 from orion_api.db import require_session_factory
 from orion_api.pncp import PNCPClient
-from orion_api.storage import configured_object_store, synchronize_pncp_procurement_documents
+from orion_api.storage import configured_object_store, synchronize_pncp_procurement_documents\nfrom orion_api.repository import (\n    create_document_sync_operation, finish_document_sync_operation,\n)
 
 
 async def run(
@@ -29,20 +29,39 @@ async def run(
     object_store = store or configured_object_store()
     factory = session_factory or require_session_factory()
 
+    external_id = f"{cnpj}-{year}-{sequence}"
     async with factory() as session:
-        result = await synchronize_pncp_procurement_documents(
-            session,
-            client=pncp_client,
-            store=object_store,
-            cnpj=cnpj,
-            year=year,
-            sequence=sequence,
-            max_bytes=settings.pncp_max_document_bytes,
+        operation_id = await create_document_sync_operation(
+            session, external_id=external_id
         )
+
+    started_at = datetime.now(UTC).isoformat()
+    try:
+        async with factory() as session:
+            result = await synchronize_pncp_procurement_documents(
+                session,
+                client=pncp_client,
+                store=object_store,
+                cnpj=cnpj,
+                year=year,
+                sequence=sequence,
+                max_bytes=settings.pncp_max_document_bytes,
+            )
+        async with factory() as session:
+            await finish_document_sync_operation(
+                session, operation_id=operation_id, result=result
+            )
+    except Exception as exc:
+        async with factory() as session:
+            await finish_document_sync_operation(
+                session, operation_id=operation_id, error=str(exc)
+            )
+        raise
 
     return {
         "operation": "pncp_document_sync",
-        "started_at": datetime.now(UTC).isoformat(),
+        "operation_id": operation_id,
+        "started_at": started_at,
         **result,
     }
 

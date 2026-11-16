@@ -8,7 +8,7 @@ from fastapi import FastAPI, HTTPException, Query, Response
 from orion_api.config import settings
 from orion_api.db import require_session_factory
 from orion_api.pncp import PNCPClient, PNCPError
-from orion_api.repository import get_document_asset_versions, get_opportunity_versions
+from orion_api.repository import (\n    get_document_asset_versions,\n    get_document_sync_operation,\n    get_opportunity_versions,\n    list_document_sync_operations,\n)
 
 
 @asynccontextmanager
@@ -212,4 +212,33 @@ async def document_asset_version_history(
         "source": "ORION",
         "retrieved_at": datetime.now(UTC).isoformat(),
         **history,
+    }
+
+
+@app.get("/api/v1/document-sync-operations")
+async def document_sync_operations(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+) -> dict[str, Any]:
+    session_factory = require_session_factory()
+    async with session_factory() as session:
+        data = await list_document_sync_operations(
+            session, page=page, page_size=page_size
+        )
+    return {"source": "ORION", "retrieved_at": datetime.now(UTC).isoformat(), **data}
+
+
+@app.get("/api/v1/document-sync-operations/{operation_id}")
+async def document_sync_operation_detail(operation_id: int) -> dict[str, Any]:
+    session_factory = require_session_factory()
+    async with session_factory() as session:
+        operation = await get_document_sync_operation(
+            session, operation_id=operation_id
+        )
+    if operation is None:
+        raise HTTPException(status_code=404, detail="Operação de sincronização não encontrada.")
+    return {
+        "source": "ORION",
+        "retrieved_at": datetime.now(UTC).isoformat(),
+        "operation": operation,
     }

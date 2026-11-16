@@ -88,3 +88,20 @@ class DocumentAssetVersion(Base):
     observed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
     )
+
+
+class DocumentSyncOperation(Base):
+    __tablename__ = "document_sync_operations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source: Mapped[str] = mapped_column(String(32), nullable=False, default="PNCP")
+    external_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    listed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    archived: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    removed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    failures: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
