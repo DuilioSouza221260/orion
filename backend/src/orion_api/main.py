@@ -71,4 +71,4 @@ async def published_opportunities(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except PNCPError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
-    return {"source": "PNCP", "retrieved_at": date.today().isoformat(), "raw": data}
+    return {"source": "PNCP", "retrieved_at": datetime.now(timezone.utc).isoformat(), "raw": data}
