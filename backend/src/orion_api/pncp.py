@@ -194,6 +194,7 @@ class PNCPClient:
         max_pages_per_modality: int = 100,
         on_page: Callable[[int, int, list[dict[str, Any]]], Awaitable[None]] | None = None,
         retain_records: bool = True,
+        resume_pages: dict[int, int] | None = None,
     ) -> dict[str, Any]:
         """Sweep publication records across every active modality; report partial failures."""
         active_modalities = await self.modalities(active_only=True)
@@ -220,6 +221,7 @@ class PNCPClient:
                     page_size=page_size,
                     uf=uf,
                     max_pages=max_pages_per_modality,
+                    start_page=(resume_pages or {}).get(modality_id, 1),
                     on_page=forward_page if on_page is not None else None,
                     retain_records=retain_records,
                 )
@@ -338,10 +340,13 @@ class PNCPClient:
         max_pages: int = 100,
         on_page: Callable[[int, list[dict[str, Any]]], Awaitable[None]] | None = None,
         retain_records: bool = True,
+        start_page: int = 1,
     ) -> dict[str, Any]:
         """Collect publication pages for one modality with a hard safety ceiling."""
         if max_pages < 1:
             raise ValueError("O limite máximo de páginas deve ser maior ou igual a 1.")
+        if start_page < 1 or start_page > max_pages + 1:
+            raise ValueError("A página inicial de retomada é inválida.")
         if start_date > end_date:
             raise ValueError("A data inicial não pode ser posterior à data final.")
 
@@ -350,7 +355,7 @@ class PNCPClient:
         collection_complete = False
         pages_collected = 0
 
-        for page in range(1, max_pages + 1):
+        for page in range(start_page, max_pages + 1):
             payload = await self.published(
                 start_date=start_date,
                 end_date=end_date,
@@ -426,10 +431,13 @@ class PNCPClient:
         max_pages: int = 100,
         on_page: Callable[[int, list[dict[str, Any]]], Awaitable[None]] | None = None,
         retain_records: bool = True,
+        start_page: int = 1,
     ) -> dict[str, Any]:
-        """Collect globally updated contracts for one modality."""
+        """Collect globally updated contracts for one modality.""
         if max_pages < 1:
             raise ValueError("O limite máximo de páginas deve ser maior ou igual a 1.")
+        if start_page < 1 or start_page > max_pages + 1:
+            raise ValueError("A página inicial de retomada é inválida.")
         if start_date > end_date:
             raise ValueError("A data inicial não pode ser posterior à data final.")
 
@@ -438,7 +446,7 @@ class PNCPClient:
         pages_collected = 0
         collection_complete = False
 
-        for page in range(1, max_pages + 1):
+        for page in range(start_page, max_pages + 1):
             payload = await self.updated_contracts(
                 start_date=start_date,
                 end_date=end_date,
@@ -488,6 +496,7 @@ class PNCPClient:
         max_pages_per_modality: int = 100,
         on_page: Callable[[int, int, list[dict[str, Any]]], Awaitable[None]] | None = None,
         retain_records: bool = True,
+        resume_pages: dict[int, int] | None = None,
     ) -> dict[str, Any]:
         """Sweep globally updated contracts across all active modalities."""
         active_modalities = await self.modalities(active_only=True)
@@ -514,6 +523,7 @@ class PNCPClient:
                     page_size=page_size,
                     uf=uf,
                     max_pages=max_pages_per_modality,
+                    start_page=(resume_pages or {}).get(modality_id, 1),
                     on_page=forward_page if on_page is not None else None,
                     retain_records=retain_records,
                 )

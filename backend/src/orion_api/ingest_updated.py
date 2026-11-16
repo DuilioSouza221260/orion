@@ -11,6 +11,7 @@ from orion_api.pncp import PNCPClient
 from orion_api.repository import (
     create_ingestion_run,
     finish_ingestion_run,
+    get_ingestion_run,
     record_ingestion_checkpoint,
     upsert_pncp_opportunities,
 )
@@ -24,6 +25,7 @@ async def run(
     uf: str | None,
     client: Any | None = None,
     session_factory: Any | None = None,
+    resume_run_id: int | None = None,
 ) -> dict[str, Any]:
     client = client or PNCPClient(
         base_url=settings.pncp_base_url,
@@ -39,10 +41,30 @@ async def run(
         "max_pages_per_modality": max_pages_per_modality,
         "uf": uf.upper() if uf else None,
     }
-    async with factory() as session:
-        run_id = await create_ingestion_run(
-            session, endpoint="atualizacao", filters=filters
-        )
+    resume_pages: dict[int, int] = {}
+    if resume_run_id is None:
+        async with factory() as session:
+            run_id = await create_ingestion_run(
+                session, endpoint="atualizacao", filters=filters
+            )
+    else:
+        async with factory() as session:
+            previous = await get_ingestion_run(session, run_id=resume_run_id)
+        if previous is None:
+            raise ValueError(f"Execução de ingestão {resume_run_id} não encontrada.")
+        if previous["endpoint"] != "atualizacao" or previous["filters"] != filters:
+            raise ValueError("Os filtros da retomada não correspondem à execução original.")
+        if previous["status"] == "completed":
+            raise ValueError("Esta execução já foi concluída e não pode ser retomada.")
+        run_id = resume_run_id
+        for checkpoint in previous["checkpoints"]:
+            modality_id = checkpoint["modality_id"]
+            resume_pages[modality_id] = max(resume_pages.get(modality_id, 1), checkpoint["page"] + 1)
+        async with factory() as session:
+            from sqlalchemy import update
+            from orion_api.models import IngestionRun
+            await session.execute(update(IngestionRun).where(IngestionRun.id == run_id).values(status="running", finished_at=None, failures=[]))
+            await session.commit()
     persisted = {
         "received": 0,
         "inserted_or_updated": 0,
@@ -87,6 +109,7 @@ async def run(
             uf=uf,
             on_page=persist_page,
             retain_records=False,
+            resume_pages=resume_pages,
         )
         async with factory() as session:
             await finish_ingestion_run(
@@ -131,6 +154,7 @@ def main() -> None:
     parser.add_argument("--max-pages-per-modality", type=int, default=100)
     parser.add_argument("--page-size", type=int, default=50)
     parser.add_argument("--uf", type=str, default=None)
+    parser.add_argument("--resume-run-id", type=int, default=None)
     args = parser.parse_args()
 
     result = asyncio.run(
@@ -140,6 +164,7 @@ def main() -> None:
             max_pages_per_modality=args.max_pages_per_modality,
             page_size=args.page_size,
             uf=args.uf,
+            resume_run_id=args.resume_run_id,
         )
     )
     print(json.dumps(result, ensure_ascii=False, sort_keys=True))
