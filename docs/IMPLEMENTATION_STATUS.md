@@ -4,35 +4,35 @@
 
 ## Implementado no repositório
 
-- [x] Repositório privado `DuilioSouza221260/orion` identificado; permissão de escrita confirmada.
-- [x] README e documentação inicial.
-- [x] API FastAPI com rota de saúde.
-- [x] Cliente HTTP PNCP para propostas abertas e contratações por publicação.
-- [x] Consulta nacional por padrão; filtro de UF opcional.
-- [x] Paginação controlada para coleta de propostas abertas, com limite de segurança e indicação de conclusão.
-- [x] Testes automatizados com transporte HTTP simulado.
-- [x] Workflow GitHub Actions para lint e testes do backend.
-- [x] Configuração inicial e arquivos de exclusão para desenvolvimento.
+- [x] Repositório privado e acesso de escrita confirmado.
+- [x] Backend FastAPI com rota de saúde e consulta de oportunidades.
+- [x] Cliente PNCP para propostas abertas e publicações por período.
+- [x] Busca nacional por padrão, com filtro opcional por UF.
+- [x] Paginação limitada com sinalização de coleta incompleta.
+- [x] Persistência PostgreSQL inicial com payload JSONB, hash SHA-256 e chave única por fonte/identificador.
+- [x] Comando de coleta manual de propostas abertas e gravação via upsert.
+- [x] Migração SQL inicial e testes automatizados para paginação e hash.
+- [x] Workflow GitHub Actions para lint e testes.
 
-## Evidência e limites de validação
+## Evidência e limites
 
-Os arquivos foram gravados no repositório e os respectivos commits foram retornados pelo GitHub. O status de checks consultado para o último commit ainda não apresentou resultados. Portanto, os testes foram escritos, mas **não estão declarados como executados ou aprovados**. Ainda não houve homologação contra respostas reais do PNCP.
+Os arquivos foram gravados e relidos do repositório. Isso confirma versionamento, não execução. Não há confirmação de CI verde, conexão com PostgreSQL, consulta real ao PNCP ou homologação ponta a ponta. O coletor atual cobre a rota de propostas abertas; ainda não é uma varredura histórica completa de todas as modalidades.
 
 ## Pendente
 
 - [ ] Confirmar execução verde do workflow CI.
-- [ ] Testar integração real contra o PNCP e validar schemas atuais.
-- [ ] Iterar por todas as modalidades oficiais ativas para uma varredura abrangente.
-- [ ] Implementar coleta incremental, retentativas e deduplicação por identificador oficial.
-- [ ] Persistir oportunidades e histórico em PostgreSQL.
-- [ ] Armazenar payloads originais e documentos/anexos.
-- [ ] Construir interface web.
-- [ ] Implantar em nuvem e configurar observabilidade, backups e segurança.
-- [ ] Homologar fluxo ponta a ponta com critérios de aceite.
+- [ ] Testar integração real com PNCP e validar schemas retornados.
+- [ ] Validar a semântica de todos os filtros e paginação nos endpoints atuais.
+- [ ] Implementar captura de publicações por modalidades ativas e atualizações globais.
+- [ ] Implementar agendamento, retentativas com backoff e checkpoint de coleta.
+- [ ] Validar persistência em PostgreSQL real e deduplicação em concorrência.
+- [ ] Implementar histórico de alterações, download de editais/anexos e armazenamento de objetos.
+- [ ] Construir interface web e autenticação multi-organização.
+- [ ] Implantar em nuvem, configurar monitoramento, backups e homologar o fluxo ponta a ponta.
 
-## Próximo ciclo técnico
+## Próximo ciclo
 
-1. Fechar o contrato de dados e a matriz de modalidades com base no catálogo oficial.
-2. Criar persistência PostgreSQL com migrações e deduplicação.
-3. Implementar worker de coleta incremental e histórico de alterações.
-4. Executar homologação real de ponta a ponta antes de ampliar o escopo.
+1. Executar o CI e corrigir qualquer falha detectada.
+2. Fazer teste real controlado do PNCP e ajustar o contrato do conector.
+3. Completar a coleta de publicações e atualizações com catálogo de modalidades validado.
+4. Acrescentar agendamento e histórico de alterações após validação da persistência.
