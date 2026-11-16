@@ -15,5 +15,6 @@ O primeiro ciclo técnico começa pela integração de consulta pública do PNCP
 ## Documentação
 - `docs/IMPLEMENTATION_STATUS.md`
 - `docs/PNCP_CONNECTOR.md`
+- `backend/migrations/0001_create_opportunities.sql`
 
 Documentação oficial: https://pncp.gov.br/api/consulta/swagger-ui/index.html
