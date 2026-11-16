@@ -127,19 +127,18 @@ class PNCPClient:
                 timeout=self.timeout_seconds,
                 transport=self.transport,
                 headers={"Accept": "*/*", "User-Agent": "ORION/0.1"},
-            ) as client:
-                async with client.stream("GET", path) as response:
-                    response.raise_for_status()
-                    content_type = response.headers.get(
-                        "content-type", "application/octet-stream"
-                    ).split(";", 1)[0].strip().lower()
-                    async for chunk in response.aiter_bytes():
-                        total_bytes += len(chunk)
-                        if total_bytes > max_bytes:
-                            raise PNCPError(
-                                f"Documento excede o limite de {max_bytes} bytes."
-                            )
-                        chunks.append(chunk)
+            ) as client, client.stream("GET", path) as response:
+                response.raise_for_status()
+                content_type = response.headers.get(
+                    "content-type", "application/octet-stream"
+                ).split(";", 1)[0].strip().lower()
+                async for chunk in response.aiter_bytes():
+                    total_bytes += len(chunk)
+                    if total_bytes > max_bytes:
+                        raise PNCPError(
+                            f"Documento excede o limite de {max_bytes} bytes."
+                        )
+                    chunks.append(chunk)
         except PNCPError:
             raise
         except httpx.HTTPError as exc:
