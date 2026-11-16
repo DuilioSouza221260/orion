@@ -7,7 +7,8 @@ from botocore.exceptions import ClientError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from orion_api.config import settings
-from orion_api.repository import upsert_document_asset
+from orion_api.pncp import PNCPError
+from orion_api.repository import mark_missing_document_assets_removed, upsert_document_asset
 
 
 class ObjectStorageError(RuntimeError):
@@ -141,9 +142,6 @@ async def synchronize_pncp_procurement_documents(
     max_bytes: int,
 ) -> dict[str, Any]:
     """List and archive a procurement's documents; only reconcile removals after a full listing."""
-    from orion_api.pncp import PNCPError
-    from orion_api.repository import mark_missing_document_assets_removed
-
     client._validate_contract_reference(cnpj, year, sequence)
     external_id = f"{cnpj}-{year}-{sequence}"
     documents = await client.contracting_documents(
