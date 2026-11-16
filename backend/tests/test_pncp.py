@@ -271,3 +271,104 @@ async def test_collect_all_published_sweeps_active_modalities_and_reports_failur
     assert result["collection_complete"] is False
     assert [item["numeroControlePNCP"] for item in result["data"]] == ["PUB-6"]
     assert result["modality_results"][1]["error"]
+
+
+
+@pytest.mark.asyncio
+async def test_updated_contracts_uses_global_update_endpoint_and_national_scope():
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        return httpx.Response(200, json={"data": [], "totalPaginas": 1})
+
+    client = PNCPClient(
+        "https://pncp.gov.br/api/consulta",
+        transport=httpx.MockTransport(handler),
+    )
+    result = await client.updated_contracts(
+        start_date=date(2026, 11, 15),
+        end_date=date(2026, 11, 16),
+        modality_code=6,
+        page=2,
+        page_size=20,
+    )
+
+    assert result["totalPaginas"] == 1
+    assert "/v1/contratacoes/atualizacao" in captured["url"]
+    assert "dataInicial=20261115" in captured["url"]
+    assert "dataFinal=20261116" in captured["url"]
+    assert "codigoModalidadeContratacao=6" in captured["url"]
+    assert "pagina=2" in captured["url"]
+    assert "uf=" not in captured["url"]
+
+
+@pytest.mark.asyncio
+async def test_collect_updated_follows_pages_and_stops_at_reported_total():
+    requested_pages = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        page = int(request.url.params["pagina"])
+        requested_pages.append(page)
+        return httpx.Response(
+            200,
+            json={
+                "data": [{"numeroControlePNCP": f"UPD-{page}"}],
+                "totalPaginas": 2,
+            },
+        )
+
+    client = PNCPClient(
+        "https://pncp.gov.br/api/consulta",
+        transport=httpx.MockTransport(handler),
+    )
+    result = await client.collect_updated(
+        start_date=date(2026, 11, 15),
+        end_date=date(2026, 11, 16),
+        modality_code=6,
+        page_size=10,
+    )
+
+    assert requested_pages == [1, 2]
+    assert [item["numeroControlePNCP"] for item in result["data"]] == ["UPD-1", "UPD-2"]
+    assert result["collection_complete"] is True
+
+
+@pytest.mark.asyncio
+async def test_collect_all_updated_continues_after_modality_failure():
+    requested_modalities = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/v1/modalidades"):
+            return httpx.Response(
+                200,
+                json=[
+                    {"id": 6, "nome": "Pregão", "statusAtivo": True},
+                    {"id": 8, "nome": "Concorrência", "statusAtivo": True},
+                ],
+            )
+        modality = int(request.url.params["codigoModalidadeContratacao"])
+        requested_modalities.append(modality)
+        if modality == 8:
+            return httpx.Response(503, json={"message": "indisponível"})
+        return httpx.Response(
+            200,
+            json={"data": [{"numeroControlePNCP": "UPD-6"}], "totalPaginas": 1},
+        )
+
+    client = PNCPClient(
+        "https://pncp.gov.br/api/consulta",
+        transport=httpx.MockTransport(handler),
+    )
+    result = await client.collect_all_updated(
+        start_date=date(2026, 11, 15),
+        end_date=date(2026, 11, 16),
+        page_size=10,
+    )
+
+    assert requested_modalities == [6, 8]
+    assert result["modalities_discovered"] == 2
+    assert result["modalities_completed"] == 1
+    assert result["collection_complete"] is False
+    assert [item["numeroControlePNCP"] for item in result["data"]] == ["UPD-6"]
+    assert result["modality_results"][1]["error"]

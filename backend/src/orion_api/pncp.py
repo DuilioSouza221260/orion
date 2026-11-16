@@ -271,6 +271,141 @@ class PNCPClient:
             "collection_complete": collection_complete,
         }
 
+    async def updated_contracts(
+        self,
+        *,
+        start_date: date,
+        end_date: date,
+        modality_code: int,
+        page: int = 1,
+        page_size: int = 50,
+        uf: str | None = None,
+    ) -> dict[str, Any]:
+        """Return contracts changed globally in the requested interval."""
+        self._validate_common(page, page_size)
+        if start_date > end_date:
+            raise ValueError("A data inicial não pode ser posterior à data final.")
+        params: dict[str, Any] = {
+            "dataInicial": self._date_param(start_date),
+            "dataFinal": self._date_param(end_date),
+            "codigoModalidadeContratacao": modality_code,
+            "pagina": page,
+            "tamanhoPagina": page_size,
+        }
+        if uf:
+            params["uf"] = uf.upper()
+        return await self._get("/v1/contratacoes/atualizacao", params)
+
+    async def collect_updated(
+        self,
+        *,
+        start_date: date,
+        end_date: date,
+        modality_code: int,
+        page_size: int = 50,
+        uf: str | None = None,
+        max_pages: int = 100,
+    ) -> dict[str, Any]:
+        """Collect globally updated contracts for one modality."""
+        if max_pages < 1:
+            raise ValueError("O limite máximo de páginas deve ser maior ou igual a 1.")
+        if start_date > end_date:
+            raise ValueError("A data inicial não pode ser posterior à data final.")
+
+        records: list[dict[str, Any]] = []
+        total_pages: int | None = None
+        pages_collected = 0
+        collection_complete = False
+
+        for page in range(1, max_pages + 1):
+            payload = await self.updated_contracts(
+                start_date=start_date,
+                end_date=end_date,
+                modality_code=modality_code,
+                page=page,
+                page_size=page_size,
+                uf=uf,
+            )
+            pages_collected += 1
+            page_records = payload.get("data", [])
+            if not isinstance(page_records, list):
+                raise PNCPError("O PNCP retornou uma lista de oportunidades em formato inválido.")
+            records.extend(item for item in page_records if isinstance(item, dict))
+
+            reported_pages = payload.get("totalPaginas")
+            if isinstance(reported_pages, int) and not isinstance(reported_pages, bool):
+                if reported_pages < 1:
+                    raise PNCPError("O PNCP informou uma quantidade inválida de páginas.")
+                total_pages = max(total_pages or reported_pages, reported_pages)
+
+            if total_pages is not None and page >= total_pages:
+                collection_complete = True
+                break
+            if not page_records:
+                collection_complete = total_pages is None
+                break
+
+        return {
+            "data": records,
+            "pages_collected": pages_collected,
+            "source_total_pages": total_pages,
+            "collection_complete": collection_complete,
+        }
+
+    async def collect_all_updated(
+        self,
+        *,
+        start_date: date,
+        end_date: date,
+        page_size: int = 50,
+        uf: str | None = None,
+        max_pages_per_modality: int = 100,
+    ) -> dict[str, Any]:
+        """Sweep globally updated contracts across all active modalities."""
+        active_modalities = await self.modalities(active_only=True)
+        if not active_modalities:
+            raise PNCPError("O catálogo do PNCP não retornou modalidades ativas.")
+
+        records: list[dict[str, Any]] = []
+        results: list[dict[str, Any]] = []
+        for modality in active_modalities:
+            modality_id = modality["id"]
+            try:
+                collection = await self.collect_updated(
+                    start_date=start_date,
+                    end_date=end_date,
+                    modality_code=modality_id,
+                    page_size=page_size,
+                    uf=uf,
+                    max_pages=max_pages_per_modality,
+                )
+                records.extend(collection["data"])
+                results.append({
+                    "modality_id": modality_id,
+                    "modality_name": modality["nome"],
+                    "pages_collected": collection["pages_collected"],
+                    "source_total_pages": collection["source_total_pages"],
+                    "collection_complete": collection["collection_complete"],
+                    "error": None,
+                })
+            except (PNCPError, ValueError) as exc:
+                results.append({
+                    "modality_id": modality_id,
+                    "modality_name": modality["nome"],
+                    "pages_collected": 0,
+                    "source_total_pages": None,
+                    "collection_complete": False,
+                    "error": str(exc),
+                })
+
+        return {
+            "data": records,
+            "modalities_discovered": len(active_modalities),
+            "modalities_completed": sum(1 for item in results if item["collection_complete"]),
+            "collection_complete": all(item["collection_complete"] for item in results),
+            "modality_results": results,
+        }
+
     async def published(
         self,
         *,
