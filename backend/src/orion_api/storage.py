@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 import boto3
@@ -140,8 +141,11 @@ async def synchronize_pncp_procurement_documents(
     year: int,
     sequence: int,
     max_bytes: int,
+    heartbeat: Callable[[], Awaitable[None]] | None = None,
 ) -> dict[str, Any]:
-    """List and archive a procurement's documents; only reconcile removals after a full listing."""
+    """List and archive documents, renewing the operation lease during long runs."""
+    if heartbeat is not None:
+        await heartbeat()
     client._validate_contract_reference(cnpj, year, sequence)
     external_id = f"{cnpj}-{year}-{sequence}"
     documents = await client.contracting_documents(
@@ -166,6 +170,8 @@ async def synchronize_pncp_procurement_documents(
     archived: list[dict[str, Any]] = []
     failures: list[dict[str, Any]] = []
     for document, document_sequence in zip(documents, sequences, strict=True):
+        if heartbeat is not None:
+            await heartbeat()
         try:
             content, content_type = await client.download_contracting_document(
                 cnpj=cnpj,
@@ -188,6 +194,9 @@ async def synchronize_pncp_procurement_documents(
             archived.append(result)
         except (PNCPError, ObjectStorageError, ValueError) as exc:
             failures.append({"document_sequence": document_sequence, "error": str(exc)})
+        finally:
+            if heartbeat is not None:
+                await heartbeat()
 
     removed = await mark_missing_document_assets_removed(
         session,

@@ -44,17 +44,24 @@ async def test_document_sync_run_returns_auditable_summary(monkeypatch):
         assert kwargs["client"] is client
         assert kwargs["store"] is store
         assert kwargs["max_bytes"] > 0
+        assert callable(kwargs["heartbeat"])
+        await kwargs["heartbeat"]()
         return expected
 
     async def fake_create(session, *, external_id):
         assert external_id == "10000000000003-2026-15"
         return 71
 
+    async def fake_heartbeat(session, *, operation_id):
+        assert operation_id == 71
+        return True
+
     async def fake_finish(session, **kwargs):
         assert kwargs["operation_id"] == 71
         assert kwargs["result"]["complete"] is True
 
     monkeypatch.setattr(sync_pncp_documents, "create_document_sync_operation", fake_create)
+    monkeypatch.setattr(sync_pncp_documents, "heartbeat_document_sync_operation", fake_heartbeat)
     monkeypatch.setattr(sync_pncp_documents, "finish_document_sync_operation", fake_finish)
     monkeypatch.setattr(
         sync_pncp_documents, "synchronize_pncp_procurement_documents", fake_sync

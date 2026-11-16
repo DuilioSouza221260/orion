@@ -101,6 +101,9 @@ class DocumentSyncOperation(Base):
     archived: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     removed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     failures: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    last_error: Mapped[str | None] = mapped_column(String(1000))
     started_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
     )

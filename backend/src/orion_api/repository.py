@@ -1,6 +1,6 @@
 import hashlib
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import func, select, update
@@ -377,11 +377,55 @@ async def get_document_asset_versions(
     }
 
 
-async def create_document_sync_operation(
-    session: AsyncSession, *, external_id: str
+DOCUMENT_SYNC_LEASE_SECONDS = 900
+
+
+class DocumentSyncAlreadyRunning(RuntimeError):
+    """A contratação já possui uma sincronização ativa."""
+
+
+async def recover_stale_document_sync_operations(
+    session: AsyncSession,
+    *,
+    external_id: str | None = None,
+    now: datetime | None = None,
 ) -> int:
     from orion_api.models import DocumentSyncOperation
 
+    current_time = now or datetime.now(UTC)
+    statement = (
+        update(DocumentSyncOperation)
+        .where(
+            DocumentSyncOperation.status == "running",
+            DocumentSyncOperation.lease_expires_at.is_not(None),
+            DocumentSyncOperation.lease_expires_at <= current_time,
+        )
+        .values(
+            status="failed",
+            finished_at=current_time,
+            lease_expires_at=None,
+            last_error="Lease expirado: operação interrompida ou sem heartbeat.",
+            failures=[{"error": "Lease expirado: operação interrompida ou sem heartbeat."}],
+        )
+    )
+    if external_id is not None:
+        statement = statement.where(DocumentSyncOperation.external_id == external_id)
+    result = await session.execute(statement)
+    await session.commit()
+    return max(result.rowcount or 0, 0)
+
+
+async def create_document_sync_operation(
+    session: AsyncSession, *, external_id: str
+) -> int:
+    from sqlalchemy.exc import IntegrityError
+
+    from orion_api.models import DocumentSyncOperation
+
+    now = datetime.now(UTC)
+    await recover_stale_document_sync_operations(
+        session, external_id=external_id, now=now
+    )
     operation = DocumentSyncOperation(
         external_id=external_id,
         status="running",
@@ -389,12 +433,41 @@ async def create_document_sync_operation(
         archived=0,
         removed=0,
         failures=[],
+        heartbeat_at=now,
+        lease_expires_at=now + timedelta(seconds=DOCUMENT_SYNC_LEASE_SECONDS),
     )
     session.add(operation)
-    await session.flush()
-    operation_id = operation.id
-    await session.commit()
+    try:
+        await session.flush()
+        operation_id = operation.id
+        await session.commit()
+    except IntegrityError as exc:
+        await session.rollback()
+        raise DocumentSyncAlreadyRunning(
+            "Já existe uma sincronização ativa para esta contratação."
+        ) from exc
     return operation_id
+
+
+async def heartbeat_document_sync_operation(
+    session: AsyncSession, *, operation_id: int
+) -> bool:
+    from orion_api.models import DocumentSyncOperation
+
+    now = datetime.now(UTC)
+    result = await session.execute(
+        update(DocumentSyncOperation)
+        .where(
+            DocumentSyncOperation.id == operation_id,
+            DocumentSyncOperation.status == "running",
+        )
+        .values(
+            heartbeat_at=now,
+            lease_expires_at=now + timedelta(seconds=DOCUMENT_SYNC_LEASE_SECONDS),
+        )
+    )
+    await session.commit()
+    return bool(result.rowcount)
 
 
 async def finish_document_sync_operation(
@@ -413,6 +486,8 @@ async def finish_document_sync_operation(
             else "failed"
         ),
         "finished_at": datetime.now(UTC),
+        "lease_expires_at": None,
+        "last_error": error[:1000] if error else None,
     }
     if result:
         values.update({
@@ -425,7 +500,10 @@ async def finish_document_sync_operation(
         values["failures"] = [{"error": error[:1000]}]
     await session.execute(
         update(DocumentSyncOperation)
-        .where(DocumentSyncOperation.id == operation_id)
+        .where(
+            DocumentSyncOperation.id == operation_id,
+            DocumentSyncOperation.status == "running",
+        )
         .values(**values)
     )
     await session.commit()
@@ -482,6 +560,9 @@ def _serialize_document_sync_operation(operation: Any) -> dict[str, Any]:
         "archived": operation.archived,
         "removed": operation.removed,
         "failures": operation.failures,
+        "heartbeat_at": operation.heartbeat_at.isoformat() if operation.heartbeat_at else None,
+        "lease_expires_at": operation.lease_expires_at.isoformat() if operation.lease_expires_at else None,
+        "last_error": operation.last_error,
         "started_at": operation.started_at.isoformat(),
         "finished_at": (
             operation.finished_at.isoformat() if operation.finished_at else None

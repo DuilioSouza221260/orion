@@ -388,6 +388,11 @@ async def test_sync_procurement_documents_archives_listed_files_and_reconciles_m
             }
 
     captured = {}
+    heartbeat_calls = 0
+
+    async def heartbeat():
+        nonlocal heartbeat_calls
+        heartbeat_calls += 1
 
     async def fake_upsert(session, **kwargs):
         captured["upsert"] = kwargs
@@ -407,6 +412,7 @@ async def test_sync_procurement_documents_archives_listed_files_and_reconciles_m
         year=2026,
         sequence=15,
         max_bytes=1024,
+        heartbeat=heartbeat,
     )
 
     assert result["listed"] == 2
@@ -417,6 +423,7 @@ async def test_sync_procurement_documents_archives_listed_files_and_reconciles_m
     assert captured["upsert"]["filename"] == "Edital.pdf"
     assert captured["reconcile"]["listed_sequences"] == [3, 4]
     assert captured["reconcile"]["listing_complete"] is True
+    assert heartbeat_calls == 5
 
 
 @pytest.mark.asyncio
@@ -452,3 +459,65 @@ async def test_sync_procurement_documents_rejects_invalid_listing_before_reconci
             sequence=15,
             max_bytes=1024,
         )
+
+
+
+@pytest.mark.asyncio
+async def test_document_sync_heartbeat_renews_only_running_operation():
+    from orion_api.repository import heartbeat_document_sync_operation
+
+    class Result:
+        rowcount = 1
+
+    class FakeSession:
+        def __init__(self):
+            self.statement = None
+            self.committed = False
+
+        async def execute(self, statement):
+            self.statement = statement
+            return Result()
+
+        async def commit(self):
+            self.committed = True
+
+    session = FakeSession()
+    renewed = await heartbeat_document_sync_operation(session, operation_id=71)
+
+    assert renewed is True
+    assert "lease_expires_at" in str(session.statement)
+    assert "status" in str(session.statement)
+    assert session.committed
+
+
+@pytest.mark.asyncio
+async def test_stale_document_sync_operations_are_recovered():
+    from datetime import UTC, datetime
+
+    from orion_api.repository import recover_stale_document_sync_operations
+
+    class Result:
+        rowcount = 2
+
+    class FakeSession:
+        def __init__(self):
+            self.statement = None
+            self.committed = False
+
+        async def execute(self, statement):
+            self.statement = statement
+            return Result()
+
+        async def commit(self):
+            self.committed = True
+
+    session = FakeSession()
+    now = datetime(2026, 11, 16, tzinfo=UTC)
+    recovered = await recover_stale_document_sync_operations(
+        session, external_id="10000000000003-2026-15", now=now
+    )
+
+    assert recovered == 2
+    assert "lease_expires_at" in str(session.statement)
+    assert "external_id" in str(session.statement)
+    assert session.committed

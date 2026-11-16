@@ -11,6 +11,7 @@ from orion_api.pncp import PNCPClient
 from orion_api.repository import (
     create_document_sync_operation,
     finish_document_sync_operation,
+    heartbeat_document_sync_operation,
 )
 from orion_api.storage import configured_object_store, synchronize_pncp_procurement_documents
 
@@ -39,6 +40,14 @@ async def run(
             session, external_id=external_id
         )
 
+    async def heartbeat() -> None:
+        async with factory() as heartbeat_session:
+            renewed = await heartbeat_document_sync_operation(
+                heartbeat_session, operation_id=operation_id
+            )
+        if not renewed:
+            raise RuntimeError("A operação perdeu seu lease e não pode continuar com segurança.")
+
     started_at = datetime.now(UTC).isoformat()
     try:
         async with factory() as session:
@@ -50,6 +59,7 @@ async def run(
                 year=year,
                 sequence=sequence,
                 max_bytes=settings.pncp_max_document_bytes,
+                heartbeat=heartbeat,
             )
         async with factory() as session:
             await finish_document_sync_operation(

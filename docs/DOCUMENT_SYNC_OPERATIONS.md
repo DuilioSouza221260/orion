@@ -6,4 +6,6 @@ Endpoints de consulta:
 - `GET /api/v1/document-sync-operations?page=1&page_size=20`: lista paginada, mais recentes primeiro.
 - `GET /api/v1/document-sync-operations/{operation_id}`: detalhe da operação.
 
-Antes de usar os endpoints, aplique a migração `0006_document_sync_operations.sql`. O histórico ainda não tem autenticação/autorização própria nem isolamento multi-tenant; não exponha a API publicamente antes de implementar esses controles. Operações interrompidas abruptamente podem permanecer como `running`; recuperação/expiração de leases será tratada em etapa própria.
+Aplique as migrações `0006_document_sync_operations.sql` e `0007_document_sync_leases.sql`. A migração 0007 adiciona heartbeat e lease de 15 minutos, encerra duplicidades antigas e cria uma restrição parcial que impede mais de uma operação `running` para a mesma contratação. O sincronizador renova o lease antes e depois de cada documento; operações sem heartbeat são marcadas como `failed` na próxima tentativa de sincronização daquela contratação. Uma colisão concorrente é rejeitada sem iniciar uma segunda execução.
+
+O histórico ainda não tem autenticação/autorização própria nem isolamento multi-tenant; não exponha a API publicamente antes de implementar esses controles.
