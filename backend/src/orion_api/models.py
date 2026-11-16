@@ -108,3 +108,44 @@ class DocumentSyncOperation(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
     )
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+
+class IngestionRun(Base):
+    __tablename__ = "ingestion_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source: Mapped[str] = mapped_column(String(32), nullable=False, default="PNCP")
+    endpoint: Mapped[str] = mapped_column(String(32), nullable=False)
+    filters: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    counters: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    failures: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class IngestionCheckpoint(Base):
+    __tablename__ = "ingestion_checkpoints"
+    __table_args__ = (
+        UniqueConstraint(
+            "ingestion_run_id", "modality_id", "page",
+            name="uq_ingestion_checkpoint_run_modality_page",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    ingestion_run_id: Mapped[int] = mapped_column(
+        ForeignKey("ingestion_runs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    modality_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    page: Mapped[int] = mapped_column(Integer, nullable=False)
+    pages_total: Mapped[int | None] = mapped_column(Integer)
+    records_received: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    completed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )

@@ -7,7 +7,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from orion_api.models import DocumentAsset, DocumentAssetVersion, Opportunity, OpportunityVersion
+from orion_api.models import (\n    DocumentAsset, DocumentAssetVersion, IngestionCheckpoint, IngestionRun,\n    Opportunity, OpportunityVersion,\n)
 
 
 def _payload_hash(payload: dict[str, Any]) -> str:
@@ -568,3 +568,122 @@ def _serialize_document_sync_operation(operation: Any) -> dict[str, Any]:
             operation.finished_at.isoformat() if operation.finished_at else None
         ),
     }
+
+
+
+async def create_ingestion_run(
+    session: AsyncSession, *, endpoint: str, filters: dict[str, Any]
+) -> int:
+    if endpoint not in {"publicacao", "atualizacao"}:
+        raise ValueError("Endpoint de ingestão inválido.")
+    now = datetime.now(UTC)
+    run = IngestionRun(
+        endpoint=endpoint,
+        filters=filters,
+        status="running",
+        counters={},
+        failures=[],
+        heartbeat_at=now,
+        lease_expires_at=now + timedelta(seconds=DOCUMENT_SYNC_LEASE_SECONDS),
+    )
+    session.add(run)
+    await session.flush()
+    run_id = run.id
+    await session.commit()
+    return run_id
+
+
+async def record_ingestion_checkpoint(
+    session: AsyncSession,
+    *,
+    run_id: int,
+    modality_id: int,
+    page: int,
+    pages_total: int | None,
+    records_received: int,
+) -> None:
+    if run_id < 1 or modality_id < 1 or page < 1 or records_received < 0:
+        raise ValueError("Checkpoint de ingestão inválido.")
+    if pages_total is not None and pages_total < 1:
+        raise ValueError("Total de páginas inválido.")
+    now = datetime.now(UTC)
+    statement = insert(IngestionCheckpoint).values(
+        ingestion_run_id=run_id,
+        modality_id=modality_id,
+        page=page,
+        pages_total=pages_total,
+        records_received=records_received,
+        completed_at=now,
+    )
+    statement = statement.on_conflict_do_update(
+        constraint="uq_ingestion_checkpoint_run_modality_page",
+        set_={
+            "pages_total": statement.excluded.pages_total,
+            "records_received": statement.excluded.records_received,
+            "completed_at": now,
+        },
+    )
+    await session.execute(statement)
+    await session.execute(
+        update(IngestionRun)
+        .where(IngestionRun.id == run_id, IngestionRun.status == "running")
+        .values(
+            heartbeat_at=now,
+            lease_expires_at=now + timedelta(seconds=DOCUMENT_SYNC_LEASE_SECONDS),
+        )
+    )
+    await session.commit()
+
+
+async def get_ingestion_run(session: AsyncSession, *, run_id: int) -> dict[str, Any] | None:
+    result = await session.execute(select(IngestionRun).where(IngestionRun.id == run_id))
+    run = result.scalar_one_or_none()
+    if run is None:
+        return None
+    checkpoints = await session.execute(
+        select(IngestionCheckpoint)
+        .where(IngestionCheckpoint.ingestion_run_id == run_id)
+        .order_by(IngestionCheckpoint.modality_id, IngestionCheckpoint.page)
+    )
+    pages = checkpoints.scalars().all()
+    return {
+        "id": run.id,
+        "source": run.source,
+        "endpoint": run.endpoint,
+        "filters": run.filters,
+        "status": run.status,
+        "counters": run.counters,
+        "failures": run.failures,
+        "heartbeat_at": run.heartbeat_at.isoformat() if run.heartbeat_at else None,
+        "lease_expires_at": run.lease_expires_at.isoformat() if run.lease_expires_at else None,
+        "started_at": run.started_at.isoformat(),
+        "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+        "checkpoints": [
+            {
+                "modality_id": item.modality_id,
+                "page": item.page,
+                "pages_total": item.pages_total,
+                "records_received": item.records_received,
+                "completed_at": item.completed_at.isoformat(),
+            }
+            for item in pages
+        ],
+    }
+
+
+async def finish_ingestion_run(
+    session: AsyncSession, *, run_id: int, complete: bool, failures: list[dict[str, Any]]
+) -> None:
+    now = datetime.now(UTC)
+    await session.execute(
+        update(IngestionRun)
+        .where(IngestionRun.id == run_id, IngestionRun.status == "running")
+        .values(
+            status="completed" if complete else "partial",
+            failures=failures,
+            finished_at=now,
+            heartbeat_at=now,
+            lease_expires_at=None,
+        )
+    )
+    await session.commit()
