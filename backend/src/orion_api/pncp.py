@@ -85,6 +85,7 @@ class PNCPClient:
 
         records: list[dict[str, Any]] = []
         page = 1
+        pages_collected = 0
         total_pages: int | None = None
 
         while page <= max_pages:
@@ -95,6 +96,7 @@ class PNCPClient:
                 modality_code=modality_code,
                 uf=uf,
             )
+            pages_collected += 1
             page_records = payload.get("data", [])
             if not isinstance(page_records, list):
                 raise PNCPError("O PNCP retornou uma lista de oportunidades em formato inválido.")
@@ -113,9 +115,9 @@ class PNCPClient:
 
         return {
             "data": records,
-            "pages_collected": page if total_pages is None or page <= (total_pages or 0) else total_pages,
+            "pages_collected": pages_collected,
             "source_total_pages": total_pages,
-            "collection_complete": total_pages is not None and page > total_pages,
+            "collection_complete": total_pages is not None and pages_collected >= total_pages,
         }
 
     async def published(
