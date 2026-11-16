@@ -19,7 +19,7 @@ async def upsert_pncp_opportunities(
     records: list[dict[str, Any]],
 ) -> dict[str, int]:
     now = datetime.now(timezone.utc)
-    prepared = []
+    prepared_by_id: dict[str, dict[str, Any]] = {}
     skipped = 0
 
     for record in records:
@@ -27,16 +27,15 @@ async def upsert_pncp_opportunities(
         if not isinstance(external_id, str) or not external_id.strip():
             skipped += 1
             continue
-        prepared.append(
-            {
-                "source": "PNCP",
-                "external_id": external_id.strip(),
-                "payload_hash": _payload_hash(record),
-                "raw_payload": record,
-                "last_seen_at": now,
-            }
-        )
+        prepared_by_id[external_id.strip()] = {
+            "source": "PNCP",
+            "external_id": external_id.strip(),
+            "payload_hash": _payload_hash(record),
+            "raw_payload": record,
+            "last_seen_at": now,
+        }
 
+    prepared = list(prepared_by_id.values())
     if not prepared:
         return {"received": len(records), "inserted_or_updated": 0, "skipped_without_id": skipped}
 
