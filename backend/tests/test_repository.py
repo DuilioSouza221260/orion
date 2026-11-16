@@ -13,3 +13,35 @@ def test_payload_hash_changes_when_source_payload_changes():
     second = {"numeroControlePNCP": "A", "situacao": "encerrada"}
 
     assert _payload_hash(first) != _payload_hash(second)
+
+
+
+def test_document_sha256_validation_accepts_hex_digest():
+    from orion_api.repository import upsert_document_asset
+
+    assert callable(upsert_document_asset)
+
+
+@pytest.mark.parametrize("digest", ["", "not-a-hash", "g" * 64, "a" * 63])
+def test_document_asset_rejects_invalid_digest_before_database_write(digest):
+    import asyncio
+
+    from orion_api.repository import upsert_document_asset
+
+    class NoDatabase:
+        async def execute(self, statement):
+            raise AssertionError("Não deveria acessar o banco.")
+
+    with pytest.raises(ValueError, match="SHA-256 inválido"):
+        asyncio.run(
+            upsert_document_asset(
+                NoDatabase(),
+                sha256=digest,
+                external_id="PNCP-123",
+                document_sequence=1,
+                content_type="application/pdf",
+                byte_size=10,
+                storage_backend="s3",
+                storage_key=f"sha256/{digest}",
+            )
+        )

@@ -27,7 +27,7 @@ A execução CI 43950757649 concluiu Lint (Ruff) e testes com sucesso, com 22 te
 - [ ] Implementar agendamento, retentativas com backoff e checkpoint de coleta.
 - [ ] Validar persistência em PostgreSQL real e deduplicação em concorrência.
 - [x] Consultar detalhes de contratação e listar metadados dos documentos publicados.
-- [x] Download controlado de editais/anexos pelo endpoint oficial do PNCP, validação de tamanho, cálculo SHA-256 na resposta e identificação da origem.\n- [ ] Armazenar objetos em storage persistente (S3 compatível) com trilha de auditoria e metadados duráveis.
+- [x] Download controlado de editais/anexos pelo endpoint oficial do PNCP, validação de tamanho, cálculo SHA-256 na resposta e identificação da origem.\n- [x] Criar catálogo PostgreSQL de documentos com SHA-256 único, origem PNCP, referência externa, tipo, tamanho, backend e chave de armazenamento.\n- [ ] Integrar upload/download efetivo em storage S3 compatível e trilha de auditoria.
 - [ ] Implementar histórico de alterações completo da contratação e dos documentos.
 - [ ] Construir interface web e autenticação multi-organização.
 - [ ] Implantar em nuvem, configurar monitoramento, backups e homologar o fluxo ponta a ponta.
@@ -35,6 +35,6 @@ A execução CI 43950757649 concluiu Lint (Ruff) e testes com sucesso, com 22 te
 ## Próximo ciclo
 
 1. Executar teste real controlado do PNCP para detalhes e documentos, confirmando os schemas e URLs retornados.
-2. Implementar armazenamento persistente S3 compatível, deduplicação por hash e catálogo durável de documentos.
+2. Integrar o catálogo PostgreSQL ao upload real em storage S3 compatível, com deduplicação física por hash e trilha de auditoria.
 3. Implementar histórico da contratação, itens e documentos.
 4. Acrescentar agendamento, retentativas e checkpoints após validação da persistência PostgreSQL.

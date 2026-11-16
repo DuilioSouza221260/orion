@@ -6,7 +6,7 @@ from typing import Any
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from orion_api.models import Opportunity
+from orion_api.models import DocumentAsset, Opportunity
 
 
 def _payload_hash(payload: dict[str, Any]) -> str:
@@ -55,3 +55,46 @@ async def upsert_pncp_opportunities(
         "inserted_or_updated": result.rowcount or 0,
         "skipped_without_id": skipped,
     }
+
+
+
+async def upsert_document_asset(
+    session: AsyncSession,
+    *,
+    sha256: str,
+    external_id: str,
+    document_sequence: int,
+    content_type: str,
+    byte_size: int,
+    storage_backend: str,
+    storage_key: str,
+    filename: str | None = None,
+) -> None:
+    if len(sha256) != 64 or any(char not in "0123456789abcdef" for char in sha256.lower()):
+        raise ValueError("SHA-256 inválido.")
+    if not external_id.strip() or document_sequence < 1 or byte_size < 1:
+        raise ValueError("Metadados do documento inválidos.")
+    now = datetime.now(UTC)
+    statement = insert(DocumentAsset).values(
+        sha256=sha256.lower(),
+        source="PNCP",
+        external_id=external_id.strip(),
+        document_sequence=document_sequence,
+        filename=filename,
+        content_type=content_type[:160],
+        byte_size=byte_size,
+        storage_backend=storage_backend,
+        storage_key=storage_key,
+        first_seen_at=now,
+        last_seen_at=now,
+    )
+    statement = statement.on_conflict_do_update(
+        constraint="uq_document_assets_sha256",
+        set_={
+            "last_seen_at": now,
+            "external_id": statement.excluded.external_id,
+            "document_sequence": statement.excluded.document_sequence,
+        },
+    )
+    await session.execute(statement)
+    await session.commit()
