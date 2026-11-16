@@ -10,7 +10,7 @@ Base URL: `https://pncp.gov.br/api/consulta`
 - `GET /v1/contratacoes/proposta`: contratações com recebimento de propostas aberto. O conector envia `dataFinal` e `pagina`; filtros opcionais podem incluir modalidade e UF.
 - `GET /v1/contratacoes/publicacao`: publicações por período. O conector envia `dataInicial`, `dataFinal`, `codigoModalidadeContratacao` e `pagina`.
 
-A busca nacional é o padrão: o filtro de UF só é enviado quando solicitado. A consulta por publicação exige modalidade; uma varredura abrangente deverá iterar sobre a lista oficial de modalidades ativas, sem presumir que um código represente todas.
+A busca nacional é o padrão: o filtro de UF só é enviado quando solicitado. A consulta por publicação exige modalidade. O catálogo de modalidades é consultado separadamente na API de integração, em `https://pncp.gov.br/api/pncp/v1/modalidades?statusAtivo=true`; não se deve chamar esse recurso pela base `/api/consulta`.
 
 ## Regras de implementação
 
@@ -24,7 +24,7 @@ A busca nacional é o padrão: o filtro de UF só é enviado quando solicitado. 
 
 ## Limites conhecidos
 
-A coleta paginada por modalidade já está implementada, mas a varredura nacional automática de todas as modalidades ativas ainda não existe. A persistência PostgreSQL está implementada para o fluxo de propostas abertas; a publicação por modalidade ainda não tem comando de ingestão próprio. O conector não baixa editais/anexos nem executa análise por IA. Essas capacidades não devem ser anunciadas como concluídas.
+O catálogo de modalidades ativas e a varredura de publicações por modalidade estão implementados. Falhas de uma modalidade são registradas no resultado sem ocultar as demais; a coleta global só é marcada completa quando todas terminam. O comando de ingestão de publicações persiste os resultados coletados no PostgreSQL e retorna código de saída 2 quando a varredura fica parcial. A integração real com o serviço PNCP e a persistência PostgreSQL ainda precisam de homologação operacional. O conector não baixa editais/anexos nem executa análise por IA.
 
 
 ## Persistência inicial
@@ -33,10 +33,16 @@ O primeiro armazenamento usa PostgreSQL com chave única composta por fonte e `n
 
 Migração inicial: `backend/migrations/0001_create_opportunities.sql`.
 
-Com a variável `ORION_DATABASE_URL` configurada, a coleta de propostas abertas pode ser executada no backend:
+Com as variáveis `ORION_DATABASE_URL`, `ORION_PNCP_BASE_URL` e `ORION_PNCP_DOMAIN_BASE_URL` configuradas, a coleta de propostas abertas pode ser executada no backend:
 
 ```bash
 python -m orion_api.ingest_open --end-date 2026-11-16 --max-pages 100
+```
+
+A coleta de publicações de todas as modalidades ativas pode ser executada manualmente por intervalo de datas:
+
+```bash
+python -m orion_api.ingest_published --start-date 2026-11-01 --end-date 2026-11-16 --max-pages-per-modality 100
 ```
 
 A execução é deliberadamente manual nesta etapa. O agendamento contínuo será habilitado depois que os limites operacionais, a observabilidade e a recuperação de falhas forem validados.
