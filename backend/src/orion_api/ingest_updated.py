@@ -79,7 +79,7 @@ async def run(
             )
 
     try:
-            collection = await client.collect_all_updated(
+        collection = await client.collect_all_updated(
             start_date=start_date,
             end_date=end_date,
             max_pages_per_modality=max_pages_per_modality,
