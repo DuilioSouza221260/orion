@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     pncp_base_url: str = "https://pncp.gov.br/api/consulta"
     pncp_timeout_seconds: float = 25.0
     pncp_max_page_size: int = 50
+    database_url: str | None = None
 
     model_config = SettingsConfigDict(env_prefix="ORION_", env_file=".env", extra="ignore")
 
