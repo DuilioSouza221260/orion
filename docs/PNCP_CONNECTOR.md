@@ -25,3 +25,18 @@ A busca nacional é o padrão: o filtro de UF só é enviado quando solicitado. 
 ## Limites conhecidos
 
 Este primeiro conector ainda não persiste dados, não percorre automaticamente todas as páginas e não baixa editais/anexos. Também não executa análise por IA. Essas capacidades não devem ser anunciadas como concluídas.
+
+
+## Persistência inicial
+
+O primeiro armazenamento usa PostgreSQL com chave única composta por fonte e `numeroControlePNCP`. O payload original é mantido em JSONB e cada coleta atualiza o hash do payload e o horário da última observação, permitindo detectar alterações sem perder a referência ao registro original.
+
+Migração inicial: `backend/migrations/0001_create_opportunities.sql`.
+
+Com a variável `ORION_DATABASE_URL` configurada, a coleta de propostas abertas pode ser executada no backend:
+
+```bash
+python -m orion_api.ingest_open --end-date 2026-11-16 --max-pages 100
+```
+
+A execução é deliberadamente manual nesta etapa. O agendamento contínuo será habilitado depois que os limites operacionais, a observabilidade e a recuperação de falhas forem validados.
