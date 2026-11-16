@@ -191,3 +191,83 @@ async def test_collect_published_reports_incomplete_at_safety_ceiling():
     assert result["pages_collected"] == 2
     assert result["source_total_pages"] == 5
     assert result["collection_complete"] is False
+
+
+@pytest.mark.asyncio
+async def test_modalities_uses_integration_api_and_filters_active_records():
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        return httpx.Response(
+            200,
+            json=[
+                {"id": 6, "nome": "Pregão - Eletrônico", "statusAtivo": True},
+                {"id": 99, "nome": "Modalidade inativa", "statusAtivo": False},
+            ],
+        )
+
+    client = PNCPClient(
+        "https://pncp.gov.br/api/consulta",
+        transport=httpx.MockTransport(handler),
+    )
+    result = await client.modalities()
+
+    assert "pncp.gov.br/api/pncp/v1/modalidades" in captured["url"]
+    assert "statusAtivo=true" in captured["url"]
+    assert [item["id"] for item in result] == [6]
+
+
+@pytest.mark.asyncio
+async def test_modalities_rejects_unexpected_response_shape():
+    client = PNCPClient(
+        "https://pncp.gov.br/api/consulta",
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(200, json={"data": []})
+        ),
+    )
+    with pytest.raises(PNCPError, match="formato inesperado"):
+        await client.modalities()
+
+
+@pytest.mark.asyncio
+async def test_collect_all_published_sweeps_active_modalities_and_reports_failures():
+    requested_modalities = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/v1/modalidades":
+            return httpx.Response(
+                200,
+                json=[
+                    {"id": 6, "nome": "Pregão", "statusAtivo": True},
+                    {"id": 8, "nome": "Concorrência", "statusAtivo": True},
+                ],
+            )
+        modality = int(request.url.params["codigoModalidadeContratacao"])
+        requested_modalities.append(modality)
+        if modality == 8:
+            return httpx.Response(503, json={"message": "temporariamente indisponível"})
+        return httpx.Response(
+            200,
+            json={
+                "data": [{"numeroControlePNCP": "PUB-6"}],
+                "totalPaginas": 1,
+            },
+        )
+
+    client = PNCPClient(
+        "https://pncp.gov.br/api/consulta",
+        transport=httpx.MockTransport(handler),
+    )
+    result = await client.collect_all_published(
+        start_date=date(2026, 11, 1),
+        end_date=date(2026, 11, 16),
+        page_size=10,
+    )
+
+    assert requested_modalities == [6, 8]
+    assert result["modalities_discovered"] == 2
+    assert result["modalities_completed"] == 1
+    assert result["collection_complete"] is False
+    assert [item["numeroControlePNCP"] for item in result["data"]] == ["PUB-6"]
+    assert result["modality_results"][1]["error"]
