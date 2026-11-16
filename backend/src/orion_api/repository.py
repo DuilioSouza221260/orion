@@ -3,7 +3,7 @@ import json
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import update
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -139,3 +139,66 @@ async def upsert_document_asset(
     )
     await session.execute(statement)
     await session.commit()
+
+
+async def get_opportunity_versions(
+    session: AsyncSession,
+    *,
+    external_id: str,
+    page: int = 1,
+    page_size: int = 20,
+) -> dict[str, Any] | None:
+    if not external_id.strip() or page < 1 or not 1 <= page_size <= 100:
+        raise ValueError("Parâmetros de histórico inválidos.")
+
+    opportunity_result = await session.execute(
+        select(Opportunity).where(
+            Opportunity.source == "PNCP",
+            Opportunity.external_id == external_id.strip(),
+        )
+    )
+    opportunity = opportunity_result.scalar_one_or_none()
+    if opportunity is None:
+        return None
+
+    count_result = await session.execute(
+        select(func.count(OpportunityVersion.id)).where(
+            OpportunityVersion.opportunity_id == opportunity.id
+        )
+    )
+    total = count_result.scalar_one()
+
+    versions_result = await session.execute(
+        select(OpportunityVersion)
+        .where(OpportunityVersion.opportunity_id == opportunity.id)
+        .order_by(OpportunityVersion.observed_at.desc(), OpportunityVersion.id.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+    versions = versions_result.scalars().all()
+
+    return {
+        "opportunity": {
+            "id": opportunity.id,
+            "source": opportunity.source,
+            "external_id": opportunity.external_id,
+            "first_seen_at": opportunity.first_seen_at.isoformat(),
+            "last_seen_at": opportunity.last_seen_at.isoformat(),
+        },
+        "pagination": {
+            "page": page,
+            "page_size": page_size,
+            "total": total,
+            "pages": (total + page_size - 1) // page_size,
+        },
+        "versions": [
+            {
+                "id": version.id,
+                "payload_hash": version.payload_hash,
+                "source_endpoint": version.source_endpoint,
+                "observed_at": version.observed_at.isoformat(),
+                "payload": version.raw_payload,
+            }
+            for version in versions
+        ],
+    }

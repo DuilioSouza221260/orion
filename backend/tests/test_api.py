@@ -220,3 +220,92 @@ async def test_procurement_document_content_maps_size_limit_to_413(
     )
 
     assert response.status_code == 413
+
+
+@pytest.mark.asyncio
+async def test_opportunity_version_history_endpoint_returns_paginated_versions(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from datetime import UTC, datetime
+
+    from orion_api import main
+
+    now = datetime(2026, 11, 16, tzinfo=UTC)
+    opportunity = SimpleNamespace(
+        id=9, source="PNCP", external_id="10000000000003-2026-15",
+        first_seen_at=now, last_seen_at=now,
+    )
+    version = SimpleNamespace(
+        id=12, payload_hash="a" * 64, source_endpoint="pncp:publicacao",
+        observed_at=now, raw_payload={"situacao": "aberta"},
+    )
+
+    class FakeResult:
+        def __init__(self, value):
+            self.value = value
+
+        def scalar_one_or_none(self):
+            return self.value
+
+        def scalar_one(self):
+            return self.value
+
+        def scalars(self):
+            return self
+
+        def all(self):
+            return self.value
+
+    class FakeSession:
+        def __init__(self):
+            self.calls = 0
+
+        async def execute(self, statement):
+            self.calls += 1
+            return [
+                FakeResult(opportunity), FakeResult(1), FakeResult([version])
+            ][self.calls - 1]
+
+    class SessionContext:
+        async def __aenter__(self):
+            return FakeSession()
+
+        async def __aexit__(self, *args):
+            return None
+
+    monkeypatch.setattr(main, "require_session_factory", lambda: lambda: SessionContext())
+    response = await request_api(
+        "/api/v1/opportunities/10000000000003-2026-15/versions?page=1&page_size=10"
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["pagination"] == {"page": 1, "page_size": 10, "total": 1, "pages": 1}
+    assert body["versions"][0]["source_endpoint"] == "pncp:publicacao"
+    assert body["versions"][0]["payload"]["situacao"] == "aberta"
+
+
+@pytest.mark.asyncio
+async def test_opportunity_version_history_endpoint_returns_404_when_missing(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from orion_api import main
+
+    class FakeResult:
+        def scalar_one_or_none(self):
+            return None
+
+    class FakeSession:
+        async def execute(self, statement):
+            return FakeResult()
+
+    class SessionContext:
+        async def __aenter__(self):
+            return FakeSession()
+
+        async def __aexit__(self, *args):
+            return None
+
+    monkeypatch.setattr(main, "require_session_factory", lambda: lambda: SessionContext())
+    response = await request_api("/api/v1/opportunities/unknown/versions")
+    assert response.status_code == 404

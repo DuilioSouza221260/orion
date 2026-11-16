@@ -6,6 +6,8 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Query, Response
 
 from orion_api.config import settings
+from orion_api.db import require_session_factory
+from orion_api.repository import get_opportunity_versions
 from orion_api.pncp import PNCPClient, PNCPError
 
 
@@ -163,3 +165,23 @@ async def published_opportunities(
     except PNCPError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     return {"source": "PNCP", "retrieved_at": datetime.now(UTC).isoformat(), "raw": data}
+
+
+@app.get("/api/v1/opportunities/{external_id}/versions")
+async def opportunity_version_history(
+    external_id: str,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+) -> dict[str, Any]:
+    session_factory = require_session_factory()
+    async with session_factory() as session:
+        history = await get_opportunity_versions(
+            session, external_id=external_id, page=page, page_size=page_size
+        )
+    if history is None:
+        raise HTTPException(status_code=404, detail="Oportunidade não encontrada.")
+    return {
+        "source": "ORION",
+        "retrieved_at": datetime.now(UTC).isoformat(),
+        **history,
+    }
