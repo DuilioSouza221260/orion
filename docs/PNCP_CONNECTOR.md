@@ -20,11 +20,11 @@ A busca nacional é o padrão: o filtro de UF só é enviado quando solicitado. 
 - Preservar o JSON bruto retornado para auditoria e reprocessamento.
 - Registrar posteriormente timestamp UTC de coleta, endpoint, parâmetros, status HTTP e hash do payload.
 - Tratar erros do PNCP como falha de fonte, sem transformar falha em lista vazia.
-- Paginação completa e coleta incremental serão implementadas no próximo ciclo, com deduplicação por `numeroControlePNCP`.
+- O conector percorre páginas para propostas abertas e para publicações de uma modalidade informada, com limite de segurança e sinalização explícita de coleta incompleta.
 
 ## Limites conhecidos
 
-Este primeiro conector ainda não persiste dados, não percorre automaticamente todas as páginas e não baixa editais/anexos. Também não executa análise por IA. Essas capacidades não devem ser anunciadas como concluídas.
+A coleta paginada por modalidade já está implementada, mas a varredura nacional automática de todas as modalidades ativas ainda não existe. A persistência PostgreSQL está implementada para o fluxo de propostas abertas; a publicação por modalidade ainda não tem comando de ingestão próprio. O conector não baixa editais/anexos nem executa análise por IA. Essas capacidades não devem ser anunciadas como concluídas.
 
 
 ## Persistência inicial
