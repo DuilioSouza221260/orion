@@ -8,22 +8,22 @@
 - [x] Backend FastAPI com rota de saúde e consulta de oportunidades.
 - [x] Cliente PNCP para propostas abertas e publicações por período.
 - [x] Busca nacional por padrão, com filtro opcional por UF.
-- [x] Paginação limitada com sinalização de coleta incompleta.
+- [x] Paginação limitada para propostas abertas e publicações por modalidade, com sinalização de coleta incompleta.
 - [x] Persistência PostgreSQL inicial com payload JSONB, hash SHA-256 e chave única por fonte/identificador.
 - [x] Comando de coleta manual de propostas abertas e gravação via upsert.
-- [x] Migração SQL inicial e testes automatizados para paginação e hash.
+- [x] Migração SQL inicial e testes automatizados para paginação, contrato da API e hash.
 - [x] Workflow GitHub Actions para lint e testes (última execução confirmada verde).
 
 ## Evidência e limites
 
-A execução CI 43949504992 foi concluída com sucesso: Ruff aprovado e 13 testes automatizados aprovados. Isso valida lint e testes unitários/contratuais simulados, mas não confirma conexão com PostgreSQL, consulta real ao PNCP ou homologação ponta a ponta. O coletor atual cobre a rota de propostas abertas; ainda não é uma varredura histórica completa de todas as modalidades.
+A execução CI 43949665679 foi concluída com sucesso: Ruff aprovado e 15 testes automatizados aprovados. Isso valida lint e testes unitários/contratuais simulados, mas não confirma conexão com PostgreSQL, consulta real ao PNCP ou homologação ponta a ponta. A coleta paginada de publicações está disponível por modalidade informada; ainda não existe varredura automática de todo o catálogo de modalidades ativas.
 
 ## Pendente
 
-- [x] Confirmar execução verde do workflow CI: Ruff aprovado e 13 testes aprovados na execução 43949504992.
+- [x] Confirmar execução verde do workflow CI: Ruff aprovado e 15 testes aprovados na execução 43949665679.
 - [ ] Testar integração real com PNCP e validar schemas retornados.
 - [ ] Validar a semântica de todos os filtros e paginação nos endpoints atuais.
-- [ ] Implementar captura de publicações por modalidades ativas e atualizações globais.
+- [ ] Implementar catálogo validado de modalidades ativas e varredura nacional automatizada; implementar captura global de atualizações.
 - [ ] Implementar agendamento, retentativas com backoff e checkpoint de coleta.
 - [ ] Validar persistência em PostgreSQL real e deduplicação em concorrência.
 - [ ] Implementar histórico de alterações, download de editais/anexos e armazenamento de objetos.
