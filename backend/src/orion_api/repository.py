@@ -7,7 +7,14 @@ from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from orion_api.models import (\n    DocumentAsset, DocumentAssetVersion, IngestionCheckpoint, IngestionRun,\n    Opportunity, OpportunityVersion,\n)
+from orion_api.models import (
+    DocumentAsset,
+    DocumentAssetVersion,
+    IngestionCheckpoint,
+    IngestionRun,
+    Opportunity,
+    OpportunityVersion,
+)
 
 
 def _payload_hash(payload: dict[str, Any]) -> str:
