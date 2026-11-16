@@ -15,8 +15,10 @@ class PNCPClient:
         timeout_seconds: float = 25.0,
         max_page_size: int = 50,
         transport: httpx.AsyncBaseTransport | None = None,
+        domain_base_url: str = "https://pncp.gov.br/api/pncp",
     ) -> None:
         self.base_url = base_url.rstrip("/")
+        self.domain_base_url = domain_base_url.rstrip("/")
         self.timeout_seconds = timeout_seconds
         self.max_page_size = max_page_size
         self.transport = transport
@@ -48,6 +50,95 @@ class PNCPClient:
         if not isinstance(payload, dict):
             raise PNCPError("O PNCP retornou um formato JSON inesperado.")
         return payload
+
+    async def modalities(self, *, active_only: bool = True) -> list[dict[str, Any]]:
+        """Return PNCP contracting modalities from the integration API, not the query API."""
+        params = {"statusAtivo": "true"} if active_only else {}
+        try:
+            async with httpx.AsyncClient(
+                base_url=self.domain_base_url,
+                timeout=self.timeout_seconds,
+                transport=self.transport,
+                headers={"Accept": "application/json", "User-Agent": "ORION/0.1"},
+            ) as client:
+                response = await client.get("/v1/modalidades", params=params)
+                response.raise_for_status()
+                payload = response.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            raise PNCPError(f"Falha ao consultar modalidades do PNCP: {exc}") from exc
+
+        if not isinstance(payload, list):
+            raise PNCPError("O PNCP retornou o catálogo de modalidades em formato inesperado.")
+
+        modalities: list[dict[str, Any]] = []
+        for item in payload:
+            if not isinstance(item, dict):
+                raise PNCPError("O PNCP retornou uma modalidade em formato inválido.")
+            modality_id = item.get("id")
+            name = item.get("nome")
+            if isinstance(modality_id, bool) or not isinstance(modality_id, int) or modality_id < 1:
+                raise PNCPError("O PNCP retornou uma modalidade sem identificador válido.")
+            if not isinstance(name, str) or not name.strip():
+                raise PNCPError("O PNCP retornou uma modalidade sem nome válido.")
+            if active_only and item.get("statusAtivo") is False:
+                continue
+            modalities.append(item)
+
+        return modalities
+
+    async def collect_all_published(
+        self,
+        *,
+        start_date: date,
+        end_date: date,
+        page_size: int = 50,
+        uf: str | None = None,
+        max_pages_per_modality: int = 100,
+    ) -> dict[str, Any]:
+        """Sweep publication records across every active modality; report partial failures."""
+        active_modalities = await self.modalities(active_only=True)
+        if not active_modalities:
+            raise PNCPError("O catálogo do PNCP não retornou modalidades ativas.")
+
+        records: list[dict[str, Any]] = []
+        results: list[dict[str, Any]] = []
+        for modality in active_modalities:
+            modality_id = modality["id"]
+            try:
+                collection = await self.collect_published(
+                    start_date=start_date,
+                    end_date=end_date,
+                    modality_code=modality_id,
+                    page_size=page_size,
+                    uf=uf,
+                    max_pages=max_pages_per_modality,
+                )
+                records.extend(collection["data"])
+                results.append({
+                    "modality_id": modality_id,
+                    "modality_name": modality["nome"],
+                    "pages_collected": collection["pages_collected"],
+                    "source_total_pages": collection["source_total_pages"],
+                    "collection_complete": collection["collection_complete"],
+                    "error": None,
+                })
+            except (PNCPError, ValueError) as exc:
+                results.append({
+                    "modality_id": modality_id,
+                    "modality_name": modality["nome"],
+                    "pages_collected": 0,
+                    "source_total_pages": None,
+                    "collection_complete": False,
+                    "error": str(exc),
+                })
+
+        return {
+            "data": records,
+            "modalities_discovered": len(active_modalities),
+            "modalities_completed": sum(1 for item in results if item["collection_complete"]),
+            "collection_complete": all(item["collection_complete"] for item in results),
+            "modality_results": results,
+        }
 
     async def open_proposals(
         self,
