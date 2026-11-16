@@ -87,6 +87,7 @@ class PNCPClient:
         page = 1
         pages_collected = 0
         total_pages: int | None = None
+        collection_complete = False
 
         while page <= max_pages:
             payload = await self.open_proposals(
@@ -103,13 +104,16 @@ class PNCPClient:
             records.extend(item for item in page_records if isinstance(item, dict))
 
             reported_pages = payload.get("totalPaginas")
-            if isinstance(reported_pages, int) and reported_pages >= 0:
-                total_pages = reported_pages
+            if isinstance(reported_pages, int) and not isinstance(reported_pages, bool):
+                if reported_pages < 1:
+                    raise PNCPError("O PNCP informou uma quantidade inválida de páginas.")
+                total_pages = max(total_pages or reported_pages, reported_pages)
 
-            if total_pages is not None:
-                if page >= total_pages:
-                    break
-            elif not page_records:
+            if total_pages is not None and page >= total_pages:
+                collection_complete = True
+                break
+            if not page_records:
+                collection_complete = total_pages is None
                 break
             page += 1
 
@@ -117,7 +121,7 @@ class PNCPClient:
             "data": records,
             "pages_collected": pages_collected,
             "source_total_pages": total_pages,
-            "collection_complete": total_pages is not None and pages_collected >= total_pages,
+            "collection_complete": collection_complete,
         }
 
     async def published(
