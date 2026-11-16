@@ -8,10 +8,11 @@ from typing import Any
 from orion_api.config import settings
 from orion_api.db import require_session_factory
 from orion_api.pncp import PNCPClient
-from orion_api.storage import configured_object_store, synchronize_pncp_procurement_documents
 from orion_api.repository import (
-    create_document_sync_operation, finish_document_sync_operation,
+    create_document_sync_operation,
+    finish_document_sync_operation,
 )
+from orion_api.storage import configured_object_store, synchronize_pncp_procurement_documents
 
 
 async def run(
