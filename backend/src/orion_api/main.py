@@ -7,8 +7,8 @@ from fastapi import FastAPI, HTTPException, Query, Response
 
 from orion_api.config import settings
 from orion_api.db import require_session_factory
-from orion_api.repository import get_opportunity_versions
 from orion_api.pncp import PNCPClient, PNCPError
+from orion_api.repository import get_opportunity_versions
 
 
 @asynccontextmanager
