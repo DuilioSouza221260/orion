@@ -295,3 +295,83 @@ async def get_opportunity_versions(
             for version in versions
         ],
     }
+
+
+
+async def get_document_asset_versions(
+    session: AsyncSession,
+    *,
+    external_id: str,
+    document_sequence: int,
+    page: int = 1,
+    page_size: int = 20,
+) -> dict[str, Any] | None:
+    if (
+        not external_id.strip()
+        or document_sequence < 1
+        or page < 1
+        or not 1 <= page_size <= 100
+    ):
+        raise ValueError("Parâmetros de histórico do documento inválidos.")
+
+    asset_result = await session.execute(
+        select(DocumentAsset).where(
+            DocumentAsset.source == "PNCP",
+            DocumentAsset.external_id == external_id.strip(),
+            DocumentAsset.document_sequence == document_sequence,
+        )
+    )
+    asset = asset_result.scalar_one_or_none()
+    if asset is None:
+        return None
+
+    count_result = await session.execute(
+        select(func.count(DocumentAssetVersion.id)).where(
+            DocumentAssetVersion.asset_id == asset.id
+        )
+    )
+    total = count_result.scalar_one()
+
+    versions_result = await session.execute(
+        select(DocumentAssetVersion)
+        .where(DocumentAssetVersion.asset_id == asset.id)
+        .order_by(
+            DocumentAssetVersion.observed_at.desc(),
+            DocumentAssetVersion.id.desc(),
+        )
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+    versions = versions_result.scalars().all()
+
+    return {
+        "document": {
+            "id": asset.id,
+            "source": asset.source,
+            "external_id": asset.external_id,
+            "document_sequence": asset.document_sequence,
+            "status": asset.status,
+            "first_seen_at": asset.first_seen_at.isoformat(),
+            "last_seen_at": asset.last_seen_at.isoformat(),
+        },
+        "pagination": {
+            "page": page,
+            "page_size": page_size,
+            "total": total,
+            "pages": (total + page_size - 1) // page_size,
+        },
+        "versions": [
+            {
+                "id": version.id,
+                "sha256": version.sha256,
+                "filename": version.filename,
+                "content_type": version.content_type,
+                "byte_size": version.byte_size,
+                "storage_backend": version.storage_backend,
+                "storage_key": version.storage_key,
+                "status": version.status,
+                "observed_at": version.observed_at.isoformat(),
+            }
+            for version in versions
+        ],
+    }

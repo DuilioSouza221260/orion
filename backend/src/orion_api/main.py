@@ -8,7 +8,7 @@ from fastapi import FastAPI, HTTPException, Query, Response
 from orion_api.config import settings
 from orion_api.db import require_session_factory
 from orion_api.pncp import PNCPClient, PNCPError
-from orion_api.repository import get_opportunity_versions
+from orion_api.repository import get_document_asset_versions, get_opportunity_versions
 
 
 @asynccontextmanager
@@ -180,6 +180,34 @@ async def opportunity_version_history(
         )
     if history is None:
         raise HTTPException(status_code=404, detail="Oportunidade não encontrada.")
+    return {
+        "source": "ORION",
+        "retrieved_at": datetime.now(UTC).isoformat(),
+        **history,
+    }
+
+
+
+@app.get(
+    "/api/v1/procurements/{external_id}/documents/{document_sequence}/versions"
+)
+async def document_asset_version_history(
+    external_id: str,
+    document_sequence: int,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+) -> dict[str, Any]:
+    session_factory = require_session_factory()
+    async with session_factory() as session:
+        history = await get_document_asset_versions(
+            session,
+            external_id=external_id,
+            document_sequence=document_sequence,
+            page=page,
+            page_size=page_size,
+        )
+    if history is None:
+        raise HTTPException(status_code=404, detail="Documento não encontrado.")
     return {
         "source": "ORION",
         "retrieved_at": datetime.now(UTC).isoformat(),

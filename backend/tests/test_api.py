@@ -309,3 +309,102 @@ async def test_opportunity_version_history_endpoint_returns_404_when_missing(
     monkeypatch.setattr(main, "require_session_factory", lambda: lambda: SessionContext())
     response = await request_api("/api/v1/opportunities/unknown/versions")
     assert response.status_code == 404
+
+
+
+@pytest.mark.asyncio
+async def test_document_asset_version_history_endpoint_returns_paginated_versions(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from datetime import UTC, datetime
+
+    from orion_api import main
+
+    now = datetime(2026, 11, 16, tzinfo=UTC)
+    history = {
+        "document": {
+            "id": 7,
+            "source": "PNCP",
+            "external_id": "10000000000003-2026-15",
+            "document_sequence": 3,
+            "status": "present",
+            "first_seen_at": now.isoformat(),
+            "last_seen_at": now.isoformat(),
+        },
+        "pagination": {"page": 1, "page_size": 10, "total": 2, "pages": 1},
+        "versions": [
+            {
+                "id": 15,
+                "sha256": "a" * 64,
+                "filename": "edital.pdf",
+                "content_type": "application/pdf",
+                "byte_size": 120,
+                "storage_backend": "s3",
+                "storage_key": "sha256/aa/" + "a" * 64,
+                "status": "present",
+                "observed_at": now.isoformat(),
+            }
+        ],
+    }
+
+    class FakeSession:
+        pass
+
+    class SessionContext:
+        async def __aenter__(self):
+            return FakeSession()
+
+        async def __aexit__(self, *args):
+            return None
+
+    async def fake_history(session, **kwargs):
+        assert kwargs == {
+            "external_id": "10000000000003-2026-15",
+            "document_sequence": 3,
+            "page": 1,
+            "page_size": 10,
+        }
+        return history
+
+    monkeypatch.setattr(main, "require_session_factory", lambda: lambda: SessionContext())
+    monkeypatch.setattr(main, "get_document_asset_versions", fake_history)
+
+    response = await request_api(
+        "/api/v1/procurements/10000000000003-2026-15/documents/3/versions"
+        "?page=1&page_size=10"
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["source"] == "ORION"
+    assert body["pagination"]["total"] == 2
+    assert body["versions"][0]["sha256"] == "a" * 64
+    assert body["versions"][0]["status"] == "present"
+
+
+@pytest.mark.asyncio
+async def test_document_asset_version_history_endpoint_returns_404_when_missing(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from orion_api import main
+
+    class FakeSession:
+        pass
+
+    class SessionContext:
+        async def __aenter__(self):
+            return FakeSession()
+
+        async def __aexit__(self, *args):
+            return None
+
+    async def missing_history(session, **kwargs):
+        return None
+
+    monkeypatch.setattr(main, "require_session_factory", lambda: lambda: SessionContext())
+    monkeypatch.setattr(main, "get_document_asset_versions", missing_history)
+
+    response = await request_api(
+        "/api/v1/procurements/unknown/documents/1/versions"
+    )
+    assert response.status_code == 404
