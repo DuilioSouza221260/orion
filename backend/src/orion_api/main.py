@@ -1,5 +1,5 @@
 from contextlib import asynccontextmanager
-from datetime import date
+from datetime import date, datetime, timezone
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query
@@ -46,7 +46,7 @@ async def open_opportunities(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except PNCPError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
-    return {"source": "PNCP", "retrieved_at": date.today().isoformat(), "raw": data}
+    return {"source": "PNCP", "retrieved_at": datetime.now(timezone.utc).isoformat(), "raw": data}
 
 
 @app.get("/api/v1/opportunities/published")
