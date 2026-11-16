@@ -235,7 +235,7 @@ async def test_collect_all_published_sweeps_active_modalities_and_reports_failur
     requested_modalities = []
 
     def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/v1/modalidades":
+        if request.url.path.endswith("/v1/modalidades"):
             return httpx.Response(
                 200,
                 json=[
