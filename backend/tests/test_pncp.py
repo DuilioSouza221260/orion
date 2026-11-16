@@ -3,7 +3,7 @@ from datetime import date
 import httpx
 import pytest
 
-from orion_api.pncp import PNCPClient
+from orion_api.pncp import PNCPClient, PNCPError
 
 
 @pytest.mark.asyncio
@@ -110,8 +110,6 @@ async def test_collect_open_proposals_rejects_zero_reported_pages():
         "https://pncp.gov.br/api/consulta",
         transport=httpx.MockTransport(handler),
     )
-    from orion_api.pncp import PNCPError
-
     with pytest.raises(PNCPError, match="quantidade inválida de páginas"):
         await client.collect_open_proposals(end_date=date(2026, 11, 16), page_size=10)
 
