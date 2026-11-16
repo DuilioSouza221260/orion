@@ -47,3 +47,52 @@ def test_document_asset_rejects_invalid_digest_before_database_write(digest):
                 storage_key=f"sha256/{digest}",
             )
         )
+
+
+@pytest.mark.asyncio
+async def test_s3_storage_uploads_content_addressed_object_once():
+    import hashlib
+
+    from botocore.exceptions import ClientError
+
+    from orion_api.storage import S3ObjectStore
+
+    class FakeS3:
+        def __init__(self):
+            self.objects = {}
+            self.put_calls = 0
+
+        def head_object(self, *, Bucket, Key):
+            if Key not in self.objects:
+                raise ClientError(
+                    {"Error": {"Code": "404"}, "ResponseMetadata": {"HTTPStatusCode": 404}},
+                    "HeadObject",
+                )
+            return {}
+
+        def put_object(self, **kwargs):
+            self.put_calls += 1
+            self.objects[kwargs["Key"]] = kwargs["Body"]
+
+    client = FakeS3()
+    store = S3ObjectStore(bucket="orion-test", client=client)
+    content = b"edital de teste"
+
+    first = await store.store(content=content, content_type="application/pdf")
+    second = await store.store(content=content, content_type="application/pdf")
+
+    digest = hashlib.sha256(content).hexdigest()
+    assert first["sha256"] == digest
+    assert first["storage_key"] == f"sha256/{digest[:2]}/{digest}"
+    assert first["created"] is True
+    assert second["created"] is False
+    assert client.put_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_s3_storage_rejects_empty_documents():
+    from orion_api.storage import S3ObjectStore
+
+    store = S3ObjectStore(bucket="orion-test", client=object())
+    with pytest.raises(ValueError, match="documento vazio"):
+        await store.store(content=b"", content_type="application/pdf")

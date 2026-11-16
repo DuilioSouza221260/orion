@@ -57,7 +57,6 @@ async def upsert_pncp_opportunities(
     }
 
 
-
 async def upsert_document_asset(
     session: AsyncSession,
     *,
@@ -89,11 +88,15 @@ async def upsert_document_asset(
         last_seen_at=now,
     )
     statement = statement.on_conflict_do_update(
-        constraint="uq_document_assets_sha256",
+        constraint="uq_document_assets_source_reference",
         set_={
+            "sha256": statement.excluded.sha256,
+            "filename": statement.excluded.filename,
+            "content_type": statement.excluded.content_type,
+            "byte_size": statement.excluded.byte_size,
+            "storage_backend": statement.excluded.storage_backend,
+            "storage_key": statement.excluded.storage_key,
             "last_seen_at": now,
-            "external_id": statement.excluded.external_id,
-            "document_sequence": statement.excluded.document_sequence,
         },
     )
     await session.execute(statement)

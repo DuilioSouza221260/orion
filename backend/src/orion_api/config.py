@@ -10,6 +10,11 @@ class Settings(BaseSettings):
     pncp_max_page_size: int = 50
     pncp_max_document_bytes: int = 26214400
     database_url: str | None = None
+    s3_endpoint_url: str | None = None
+    s3_region: str = "us-east-1"
+    s3_bucket: str | None = None
+    s3_access_key_id: str | None = None
+    s3_secret_access_key: str | None = None
 
     model_config = SettingsConfigDict(env_prefix="ORION_", env_file=".env", extra="ignore")
 

@@ -31,7 +31,10 @@ class Opportunity(Base):
 class DocumentAsset(Base):
     __tablename__ = "document_assets"
     __table_args__ = (
-        UniqueConstraint("sha256", name="uq_document_assets_sha256"),
+        UniqueConstraint(
+            "source", "external_id", "document_sequence",
+            name="uq_document_assets_source_reference",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
