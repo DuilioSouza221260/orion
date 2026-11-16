@@ -62,9 +62,29 @@ class DocumentAsset(Base):
     byte_size: Mapped[int] = mapped_column(Integer, nullable=False)
     storage_backend: Mapped[str] = mapped_column(String(32), nullable=False)
     storage_key: Mapped[str] = mapped_column(String(512), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="present", server_default="present")
     first_seen_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     last_seen_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class DocumentAssetVersion(Base):
+    __tablename__ = "document_asset_versions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    asset_id: Mapped[int] = mapped_column(
+        ForeignKey("document_assets.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    filename: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    content_type: Mapped[str] = mapped_column(String(160), nullable=False)
+    byte_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    storage_backend: Mapped[str] = mapped_column(String(32), nullable=False)
+    storage_key: Mapped[str] = mapped_column(String(512), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    observed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
     )

@@ -7,7 +7,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from orion_api.models import DocumentAsset, Opportunity, OpportunityVersion
+from orion_api.models import DocumentAsset, DocumentAssetVersion, Opportunity, OpportunityVersion
 
 
 def _payload_hash(payload: dict[str, Any]) -> str:
@@ -122,6 +122,7 @@ async def upsert_document_asset(
         byte_size=byte_size,
         storage_backend=storage_backend,
         storage_key=storage_key,
+        status="present",
         first_seen_at=now,
         last_seen_at=now,
     )
@@ -134,11 +135,103 @@ async def upsert_document_asset(
             "byte_size": statement.excluded.byte_size,
             "storage_backend": statement.excluded.storage_backend,
             "storage_key": statement.excluded.storage_key,
+            "status": "present",
             "last_seen_at": now,
         },
+        where=(
+            DocumentAsset.sha256.is_distinct_from(statement.excluded.sha256)
+            | DocumentAsset.filename.is_distinct_from(statement.excluded.filename)
+            | DocumentAsset.content_type.is_distinct_from(statement.excluded.content_type)
+            | DocumentAsset.byte_size.is_distinct_from(statement.excluded.byte_size)
+            | DocumentAsset.storage_backend.is_distinct_from(statement.excluded.storage_backend)
+            | DocumentAsset.storage_key.is_distinct_from(statement.excluded.storage_key)
+            | DocumentAsset.status.is_distinct_from("present")
+        ),
+    ).returning(
+        DocumentAsset.id,
+        DocumentAsset.sha256,
+        DocumentAsset.filename,
+        DocumentAsset.content_type,
+        DocumentAsset.byte_size,
+        DocumentAsset.storage_backend,
+        DocumentAsset.storage_key,
+        DocumentAsset.status,
     )
-    await session.execute(statement)
+    changed = (await session.execute(statement)).mappings().all()
+    if changed:
+        versions = [
+            {
+                "asset_id": row["id"],
+                "sha256": row["sha256"],
+                "filename": row["filename"],
+                "content_type": row["content_type"],
+                "byte_size": row["byte_size"],
+                "storage_backend": row["storage_backend"],
+                "storage_key": row["storage_key"],
+                "status": row["status"],
+                "observed_at": now,
+            }
+            for row in changed
+        ]
+        await session.execute(insert(DocumentAssetVersion).values(versions))
     await session.commit()
+
+
+async def mark_missing_document_assets_removed(
+    session: AsyncSession,
+    *,
+    external_id: str,
+    listed_sequences: list[int],
+    listing_complete: bool,
+) -> int:
+    """Mark missing documents only after an authoritative, complete PNCP listing."""
+    if not external_id.strip():
+        raise ValueError("Referência da contratação inválida.")
+    if not listing_complete:
+        return 0
+    if any(sequence < 1 for sequence in listed_sequences):
+        raise ValueError("Sequência de documento inválida.")
+
+    now = datetime.now(UTC)
+    statement = (
+        update(DocumentAsset)
+        .where(
+            DocumentAsset.source == "PNCP",
+            DocumentAsset.external_id == external_id.strip(),
+            DocumentAsset.status == "present",
+            ~DocumentAsset.document_sequence.in_(listed_sequences),
+        )
+        .values(status="removed", last_seen_at=now)
+        .returning(
+            DocumentAsset.id,
+            DocumentAsset.sha256,
+            DocumentAsset.filename,
+            DocumentAsset.content_type,
+            DocumentAsset.byte_size,
+            DocumentAsset.storage_backend,
+            DocumentAsset.storage_key,
+            DocumentAsset.status,
+        )
+    )
+    removed = (await session.execute(statement)).mappings().all()
+    if removed:
+        versions = [
+            {
+                "asset_id": row["id"],
+                "sha256": row["sha256"],
+                "filename": row["filename"],
+                "content_type": row["content_type"],
+                "byte_size": row["byte_size"],
+                "storage_backend": row["storage_backend"],
+                "storage_key": row["storage_key"],
+                "status": "removed",
+                "observed_at": now,
+            }
+            for row in removed
+        ]
+        await session.execute(insert(DocumentAssetVersion).values(versions))
+    await session.commit()
+    return len(removed)
 
 
 async def get_opportunity_versions(

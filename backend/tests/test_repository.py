@@ -203,3 +203,153 @@ async def test_archive_pncp_document_uploads_and_registers_reference(monkeypatch
     assert captured["external_id"] == "10000000000003-2026-15"
     assert captured["document_sequence"] == 3
     assert captured["sha256"] == "a" * 64
+
+
+@pytest.mark.asyncio
+async def test_document_asset_upsert_creates_version_only_when_metadata_changes():
+    from orion_api.repository import upsert_document_asset
+
+    asset = {
+        "id": 7,
+        "sha256": "a" * 64,
+        "filename": "edital.pdf",
+        "content_type": "application/pdf",
+        "byte_size": 120,
+        "storage_backend": "s3",
+        "storage_key": "sha256/aa/" + "a" * 64,
+        "status": "present",
+    }
+
+    class Result:
+        def mappings(self):
+            return self
+
+        def all(self):
+            return [asset]
+
+    class FakeSession:
+        def __init__(self):
+            self.statements = []
+            self.committed = False
+
+        async def execute(self, statement):
+            self.statements.append(statement)
+            return Result()
+
+        async def commit(self):
+            self.committed = True
+
+    session = FakeSession()
+    await upsert_document_asset(
+        session,
+        sha256="a" * 64,
+        external_id="PNCP-123",
+        document_sequence=1,
+        content_type="application/pdf",
+        byte_size=120,
+        storage_backend="s3",
+        storage_key=asset["storage_key"],
+        filename="edital.pdf",
+    )
+    assert len(session.statements) == 2
+    assert "document_asset_versions" in str(session.statements[1])
+    assert session.committed
+
+
+@pytest.mark.asyncio
+async def test_document_asset_upsert_does_not_version_unchanged_metadata():
+    from orion_api.repository import upsert_document_asset
+
+    class Result:
+        def mappings(self):
+            return self
+
+        def all(self):
+            return []
+
+    class FakeSession:
+        def __init__(self):
+            self.statements = []
+
+        async def execute(self, statement):
+            self.statements.append(statement)
+            return Result()
+
+        async def commit(self):
+            pass
+
+    session = FakeSession()
+    await upsert_document_asset(
+        session,
+        sha256="b" * 64,
+        external_id="PNCP-123",
+        document_sequence=1,
+        content_type="application/pdf",
+        byte_size=120,
+        storage_backend="s3",
+        storage_key="sha256/bb/" + "b" * 64,
+        filename="edital.pdf",
+    )
+    assert len(session.statements) == 1
+
+
+@pytest.mark.asyncio
+async def test_incomplete_document_listing_never_marks_assets_removed():
+    from orion_api.repository import mark_missing_document_assets_removed
+
+    class NoDatabase:
+        async def execute(self, statement):
+            raise AssertionError("Listagem incompleta não pode alterar documentos.")
+
+    removed = await mark_missing_document_assets_removed(
+        NoDatabase(),
+        external_id="PNCP-123",
+        listed_sequences=[],
+        listing_complete=False,
+    )
+    assert removed == 0
+
+
+@pytest.mark.asyncio
+async def test_complete_document_listing_versions_removed_assets():
+    from orion_api.repository import mark_missing_document_assets_removed
+
+    removed_asset = {
+        "id": 7,
+        "sha256": "c" * 64,
+        "filename": "anexo.pdf",
+        "content_type": "application/pdf",
+        "byte_size": 90,
+        "storage_backend": "s3",
+        "storage_key": "sha256/cc/" + "c" * 64,
+        "status": "removed",
+    }
+
+    class Result:
+        def mappings(self):
+            return self
+
+        def all(self):
+            return [removed_asset]
+
+    class FakeSession:
+        def __init__(self):
+            self.statements = []
+
+        async def execute(self, statement):
+            self.statements.append(statement)
+            return Result()
+
+        async def commit(self):
+            pass
+
+    session = FakeSession()
+    removed = await mark_missing_document_assets_removed(
+        session,
+        external_id="PNCP-123",
+        listed_sequences=[1, 3],
+        listing_complete=True,
+    )
+    assert removed == 1
+    assert len(session.statements) == 2
+    assert "document_asset_versions" in str(session.statements[1])
