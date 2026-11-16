@@ -127,3 +127,83 @@ def configured_object_store() -> S3ObjectStore:
         access_key_id=settings.s3_access_key_id,
         secret_access_key=settings.s3_secret_access_key,
     )
+
+
+
+async def synchronize_pncp_procurement_documents(
+    session: AsyncSession,
+    *,
+    client: Any,
+    store: S3ObjectStore,
+    cnpj: str,
+    year: int,
+    sequence: int,
+    max_bytes: int,
+) -> dict[str, Any]:
+    """List and archive a procurement's documents; only reconcile removals after a full listing."""
+    from orion_api.pncp import PNCPError
+    from orion_api.repository import mark_missing_document_assets_removed
+
+    client._validate_contract_reference(cnpj, year, sequence)
+    external_id = f"{cnpj}-{year}-{sequence}"
+    documents = await client.contracting_documents(
+        cnpj=cnpj,
+        year=year,
+        sequence=sequence,
+    )
+
+    sequences: list[int] = []
+    for document in documents:
+        document_sequence = document.get("sequencialDocumento")
+        if (
+            isinstance(document_sequence, bool)
+            or not isinstance(document_sequence, int)
+            or document_sequence < 1
+        ):
+            raise PNCPError("A listagem do PNCP contém documento sem sequencial válido.")
+        if document_sequence in sequences:
+            raise PNCPError("A listagem do PNCP contém sequenciais de documento duplicados.")
+        sequences.append(document_sequence)
+
+    archived: list[dict[str, Any]] = []
+    failures: list[dict[str, Any]] = []
+    for document, document_sequence in zip(documents, sequences, strict=True):
+        try:
+            content, content_type = await client.download_contracting_document(
+                cnpj=cnpj,
+                year=year,
+                sequence=sequence,
+                document_sequence=document_sequence,
+                max_bytes=max_bytes,
+            )
+            title = document.get("titulo") or document.get("nomeArquivo")
+            filename = title.strip()[:512] if isinstance(title, str) and title.strip() else None
+            result = await archive_pncp_document(
+                session,
+                store=store,
+                content=content,
+                content_type=content_type,
+                external_id=external_id,
+                document_sequence=document_sequence,
+                filename=filename,
+            )
+            archived.append(result)
+        except (PNCPError, ObjectStorageError, ValueError) as exc:
+            failures.append({"document_sequence": document_sequence, "error": str(exc)})
+
+    removed = await mark_missing_document_assets_removed(
+        session,
+        external_id=external_id,
+        listed_sequences=sequences,
+        listing_complete=True,
+    )
+    return {
+        "source": "PNCP",
+        "external_id": external_id,
+        "listed": len(documents),
+        "archived": len(archived),
+        "removed": removed,
+        "complete": not failures,
+        "archived_documents": archived,
+        "failures": failures,
+    }

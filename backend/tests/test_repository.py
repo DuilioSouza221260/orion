@@ -353,3 +353,102 @@ async def test_complete_document_listing_versions_removed_assets():
     assert removed == 1
     assert len(session.statements) == 2
     assert "document_asset_versions" in str(session.statements[1])
+
+
+
+@pytest.mark.asyncio
+async def test_sync_procurement_documents_archives_listed_files_and_reconciles_missing(
+    monkeypatch,
+):
+    from orion_api import storage
+
+    class FakeClient:
+        def _validate_contract_reference(self, cnpj, year, sequence):
+            assert (cnpj, year, sequence) == ("10000000000003", 2026, 15)
+
+        async def contracting_documents(self, **kwargs):
+            return [
+                {"sequencialDocumento": 3, "titulo": "Edital.pdf"},
+                {"sequencialDocumento": 4, "titulo": "Anexo.pdf"},
+            ]
+
+        async def download_contracting_document(self, **kwargs):
+            if kwargs["document_sequence"] == 4:
+                raise storage.PNCPError("Documento indisponível.")
+            return b"edital", "application/pdf"
+
+    class FakeStore:
+        async def store(self, **kwargs):
+            return {
+                "sha256": "a" * 64,
+                "storage_key": "sha256/aa/" + "a" * 64,
+                "storage_backend": "s3",
+                "byte_size": 6,
+                "created": True,
+            }
+
+    captured = {}
+
+    async def fake_upsert(session, **kwargs):
+        captured["upsert"] = kwargs
+
+    async def fake_mark_removed(session, **kwargs):
+        captured["reconcile"] = kwargs
+        return 1
+
+    monkeypatch.setattr(storage, "upsert_document_asset", fake_upsert)
+    monkeypatch.setattr(storage, "mark_missing_document_assets_removed", fake_mark_removed)
+
+    result = await storage.synchronize_pncp_procurement_documents(
+        object(),
+        client=FakeClient(),
+        store=FakeStore(),
+        cnpj="10000000000003",
+        year=2026,
+        sequence=15,
+        max_bytes=1024,
+    )
+
+    assert result["listed"] == 2
+    assert result["archived"] == 1
+    assert result["removed"] == 1
+    assert result["complete"] is False
+    assert result["failures"][0]["document_sequence"] == 4
+    assert captured["upsert"]["filename"] == "Edital.pdf"
+    assert captured["reconcile"]["listed_sequences"] == [3, 4]
+    assert captured["reconcile"]["listing_complete"] is True
+
+
+@pytest.mark.asyncio
+async def test_sync_procurement_documents_rejects_invalid_listing_before_reconciliation(
+    monkeypatch,
+):
+    from orion_api import storage
+
+    class FakeClient:
+        def _validate_contract_reference(self, cnpj, year, sequence):
+            pass
+
+        async def contracting_documents(self, **kwargs):
+            return [{"titulo": "Sem sequencial"}]
+
+    class NoStore:
+        pass
+
+    async def forbidden_reconciliation(*args, **kwargs):
+        raise AssertionError("Não deve reconciliar uma listagem inválida.")
+
+    monkeypatch.setattr(
+        storage, "mark_missing_document_assets_removed", forbidden_reconciliation
+    )
+
+    with pytest.raises(storage.PNCPError, match="sequencial válido"):
+        await storage.synchronize_pncp_procurement_documents(
+            object(),
+            client=FakeClient(),
+            store=NoStore(),
+            cnpj="10000000000003",
+            year=2026,
+            sequence=15,
+            max_bytes=1024,
+        )
