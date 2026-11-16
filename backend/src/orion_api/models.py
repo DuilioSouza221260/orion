@@ -16,7 +16,7 @@ class Opportunity(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    source: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    source: Mapped[str] = mapped_column(String(32), nullable=False)
     external_id: Mapped[str] = mapped_column(String(100), nullable=False)
     payload_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     raw_payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
