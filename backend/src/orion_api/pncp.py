@@ -124,6 +124,62 @@ class PNCPClient:
             "collection_complete": collection_complete,
         }
 
+    async def collect_published(
+        self,
+        *,
+        start_date: date,
+        end_date: date,
+        modality_code: int,
+        page_size: int = 50,
+        uf: str | None = None,
+        max_pages: int = 100,
+    ) -> dict[str, Any]:
+        """Collect publication pages for one modality with a hard safety ceiling."""
+        if max_pages < 1:
+            raise ValueError("O limite máximo de páginas deve ser maior ou igual a 1.")
+        if start_date > end_date:
+            raise ValueError("A data inicial não pode ser posterior à data final.")
+
+        records: list[dict[str, Any]] = []
+        total_pages: int | None = None
+        collection_complete = False
+        pages_collected = 0
+
+        for page in range(1, max_pages + 1):
+            payload = await self.published(
+                start_date=start_date,
+                end_date=end_date,
+                modality_code=modality_code,
+                page=page,
+                page_size=page_size,
+                uf=uf,
+            )
+            pages_collected += 1
+            page_records = payload.get("data", [])
+            if not isinstance(page_records, list):
+                raise PNCPError("O PNCP retornou uma lista de oportunidades em formato inválido.")
+            records.extend(item for item in page_records if isinstance(item, dict))
+
+            reported_pages = payload.get("totalPaginas")
+            if isinstance(reported_pages, int) and not isinstance(reported_pages, bool):
+                if reported_pages < 1:
+                    raise PNCPError("O PNCP informou uma quantidade inválida de páginas.")
+                total_pages = max(total_pages or reported_pages, reported_pages)
+
+            if total_pages is not None and page >= total_pages:
+                collection_complete = True
+                break
+            if not page_records:
+                collection_complete = total_pages is None
+                break
+
+        return {
+            "data": records,
+            "pages_collected": pages_collected,
+            "source_total_pages": total_pages,
+            "collection_complete": collection_complete,
+        }
+
     async def published(
         self,
         *,
