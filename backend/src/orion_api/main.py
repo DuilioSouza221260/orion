@@ -14,6 +14,7 @@ async def lifespan(app: FastAPI):
         base_url=settings.pncp_base_url,
         timeout_seconds=settings.pncp_timeout_seconds,
         max_page_size=settings.pncp_max_page_size,
+        domain_base_url=settings.pncp_domain_base_url,
     )
     yield
 
@@ -24,6 +25,20 @@ app = FastAPI(title=settings.app_name, version="0.1.0", lifespan=lifespan)
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok", "service": "orion-api", "environment": settings.environment}
+
+
+@app.get("/api/v1/reference/modalities")
+async def contracting_modalities(active_only: bool = True) -> dict[str, Any]:
+    try:
+        data = await app.state.pncp.modalities(active_only=active_only)
+    except PNCPError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return {
+        "source": "PNCP",
+        "retrieved_at": datetime.now(UTC).isoformat(),
+        "count": len(data),
+        "data": data,
+    }
 
 
 @app.get("/api/v1/opportunities/open")
