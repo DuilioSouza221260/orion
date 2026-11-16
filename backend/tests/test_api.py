@@ -408,3 +408,50 @@ async def test_document_asset_version_history_endpoint_returns_404_when_missing(
         "/api/v1/procurements/unknown/documents/1/versions"
     )
     assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_document_sync_operations_endpoint_returns_paginated_history(monkeypatch):
+    from orion_api import main
+
+    now = "2026-11-16T12:00:00+00:00"
+    expected = {
+        "pagination": {"page": 1, "page_size": 20, "total": 1, "pages": 1},
+        "operations": [{
+            "id": 8,
+            "source": "PNCP",
+            "external_id": "10000000000003-2026-15",
+            "status": "partial",
+            "listed": 2,
+            "archived": 1,
+            "removed": 0,
+            "failures": [{"document_sequence": 4, "error": "indisponível"}],
+            "started_at": now,
+            "finished_at": now,
+        }],
+    }
+
+    class FakeSession:
+        pass
+
+    class SessionContext:
+        async def __aenter__(self):
+            return FakeSession()
+
+        async def __aexit__(self, *args):
+            return None
+
+    async def fake_list(session, **kwargs):
+        assert kwargs == {"page": 1, "page_size": 20}
+        return expected
+
+    monkeypatch.setattr(main, "require_session_factory", lambda: lambda: SessionContext())
+    monkeypatch.setattr(main, "list_document_sync_operations", fake_list)
+
+    response = await request_api("/api/v1/document-sync-operations")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["pagination"]["total"] == 1
+    assert body["operations"][0]["status"] == "partial"
+    assert body["operations"][0]["failures"][0]["document_sequence"] == 4

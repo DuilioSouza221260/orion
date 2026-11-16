@@ -46,6 +46,16 @@ async def test_document_sync_run_returns_auditable_summary(monkeypatch):
         assert kwargs["max_bytes"] > 0
         return expected
 
+    async def fake_create(session, *, external_id):
+        assert external_id == "10000000000003-2026-15"
+        return 71
+
+    async def fake_finish(session, **kwargs):
+        assert kwargs["operation_id"] == 71
+        assert kwargs["result"]["complete"] is True
+
+    monkeypatch.setattr(sync_pncp_documents, "create_document_sync_operation", fake_create)
+    monkeypatch.setattr(sync_pncp_documents, "finish_document_sync_operation", fake_finish)
     monkeypatch.setattr(
         sync_pncp_documents, "synchronize_pncp_procurement_documents", fake_sync
     )
@@ -59,6 +69,7 @@ async def test_document_sync_run_returns_auditable_summary(monkeypatch):
     )
 
     assert result["operation"] == "pncp_document_sync"
+    assert result["operation_id"] == 71
     assert result["complete"] is True
     assert result["archived"] == 2
     assert result["started_at"]
