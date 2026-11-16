@@ -165,3 +165,58 @@ async def test_procurement_detail_endpoint_maps_invalid_reference_to_422(
     response = await request_api("/api/v1/procurements/invalid/2026/15")
 
     assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_procurement_document_content_returns_binary_with_integrity_headers(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    async def download_contracting_document(**kwargs: Any) -> tuple[bytes, str]:
+        assert kwargs == {
+            "cnpj": "10000000000003",
+            "year": 2026,
+            "sequence": 15,
+            "document_sequence": 3,
+            "max_bytes": 26214400,
+        }
+        return b"%PDF-1.7 sample", "application/pdf"
+
+    monkeypatch.setattr(
+        app.state,
+        "pncp",
+        SimpleNamespace(download_contracting_document=download_contracting_document),
+        raising=False,
+    )
+
+    response = await request_api(
+        "/api/v1/procurements/10000000000003/2026/15/documents/3/content"
+    )
+
+    import hashlib
+
+    assert response.status_code == 200
+    assert response.content == b"%PDF-1.7 sample"
+    assert response.headers["content-type"] == "application/pdf"
+    assert response.headers["x-content-sha256"] == hashlib.sha256(response.content).hexdigest()
+    assert response.headers["x-document-source"] == "PNCP"
+
+
+@pytest.mark.asyncio
+async def test_procurement_document_content_maps_size_limit_to_413(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    async def download_contracting_document(**kwargs: Any) -> tuple[bytes, str]:
+        raise PNCPError("Documento excede o limite de 100 bytes.")
+
+    monkeypatch.setattr(
+        app.state,
+        "pncp",
+        SimpleNamespace(download_contracting_document=download_contracting_document),
+        raising=False,
+    )
+
+    response = await request_api(
+        "/api/v1/procurements/10000000000003/2026/15/documents/3/content"
+    )
+
+    assert response.status_code == 413

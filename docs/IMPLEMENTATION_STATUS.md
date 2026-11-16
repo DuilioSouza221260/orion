@@ -11,7 +11,7 @@
 - [x] Paginação limitada para propostas abertas e publicações por modalidade, com sinalização de coleta incompleta.
 - [x] Persistência PostgreSQL inicial com payload JSONB, hash SHA-256 e chave única por fonte/identificador.
 - [x] Comandos de coleta manual de propostas abertas e publicações de todas as modalidades ativas, com gravação via upsert.
-- [x] Rotas de referência, detalhe da contratação e listagem de documentos; testes automatizados para paginação, catálogo, varredura parcial, referências, documentos, contrato da API e hash.
+- [x] Rotas de referência, detalhe da contratação, listagem e download controlado de documentos; download com limite de tamanho, SHA-256, cabeçalhos de origem e testes automatizados.
 - [x] Workflow GitHub Actions para lint e testes (última execução confirmada verde).
 
 ## Evidência e limites
@@ -27,7 +27,7 @@ A execução CI 43950757649 concluiu Lint (Ruff) e testes com sucesso, com 22 te
 - [ ] Implementar agendamento, retentativas com backoff e checkpoint de coleta.
 - [ ] Validar persistência em PostgreSQL real e deduplicação em concorrência.
 - [x] Consultar detalhes de contratação e listar metadados dos documentos publicados.
-- [ ] Baixar editais/anexos, validar tipos/tamanhos, calcular hash e armazenar objetos com trilha de auditoria.
+- [x] Download controlado de editais/anexos pelo endpoint oficial do PNCP, validação de tamanho, cálculo SHA-256 na resposta e identificação da origem.\n- [ ] Armazenar objetos em storage persistente (S3 compatível) com trilha de auditoria e metadados duráveis.
 - [ ] Implementar histórico de alterações completo da contratação e dos documentos.
 - [ ] Construir interface web e autenticação multi-organização.
 - [ ] Implantar em nuvem, configurar monitoramento, backups e homologar o fluxo ponta a ponta.
@@ -35,6 +35,6 @@ A execução CI 43950757649 concluiu Lint (Ruff) e testes com sucesso, com 22 te
 ## Próximo ciclo
 
 1. Executar teste real controlado do PNCP para detalhes e documentos, confirmando os schemas e URLs retornados.
-2. Implementar download seguro dos anexos e armazenamento de objetos com hash, tamanho, MIME e deduplicação.
+2. Implementar armazenamento persistente S3 compatível, deduplicação por hash e catálogo durável de documentos.
 3. Implementar histórico da contratação, itens e documentos.
 4. Acrescentar agendamento, retentativas e checkpoints após validação da persistência PostgreSQL.

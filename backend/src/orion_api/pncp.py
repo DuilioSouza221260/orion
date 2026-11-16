@@ -98,6 +98,57 @@ class PNCPClient:
             raise PNCPError("O PNCP retornou a lista de documentos em formato inesperado.")
         return documents
 
+    async def download_contracting_document(
+        self,
+        *,
+        cnpj: str,
+        year: int,
+        sequence: int,
+        document_sequence: int,
+        max_bytes: int = 25 * 1024 * 1024,
+    ) -> tuple[bytes, str]:
+        """Download one PNCP document with a strict response-size ceiling."""
+        self._validate_contract_reference(cnpj, year, sequence)
+        if document_sequence < 1:
+            raise ValueError("O sequencial do documento deve ser maior ou igual a 1.")
+        if max_bytes < 1:
+            raise ValueError("O limite máximo do documento deve ser maior que zero.")
+
+        path = (
+            f"/v1/orgaos/{cnpj}/compras/{year}/{sequence}/"
+            f"arquivos/{document_sequence}"
+        )
+        chunks: list[bytes] = []
+        total_bytes = 0
+        content_type = "application/octet-stream"
+        try:
+            async with httpx.AsyncClient(
+                base_url=self.domain_base_url,
+                timeout=self.timeout_seconds,
+                transport=self.transport,
+                headers={"Accept": "*/*", "User-Agent": "ORION/0.1"},
+            ) as client:
+                async with client.stream("GET", path) as response:
+                    response.raise_for_status()
+                    content_type = response.headers.get(
+                        "content-type", "application/octet-stream"
+                    ).split(";", 1)[0].strip().lower()
+                    async for chunk in response.aiter_bytes():
+                        total_bytes += len(chunk)
+                        if total_bytes > max_bytes:
+                            raise PNCPError(
+                                f"Documento excede o limite de {max_bytes} bytes."
+                            )
+                        chunks.append(chunk)
+        except PNCPError:
+            raise
+        except httpx.HTTPError as exc:
+            raise PNCPError(f"Falha ao baixar documento do PNCP: {exc}") from exc
+
+        if not chunks:
+            raise PNCPError("O PNCP retornou um documento vazio.")
+        return b"".join(chunks), content_type
+
     async def modalities(self, *, active_only: bool = True) -> list[dict[str, Any]]:
         """Return PNCP contracting modalities from the integration API, not the query API."""
         params = {"statusAtivo": "true"} if active_only else {}

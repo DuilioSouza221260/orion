@@ -1,8 +1,9 @@
 from contextlib import asynccontextmanager
 from datetime import UTC, date, datetime
+import hashlib
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Response
 
 from orion_api.config import settings
 from orion_api.pncp import PNCPClient, PNCPError
@@ -74,6 +75,46 @@ async def procurement_documents(cnpj: str, year: int, sequence: int) -> dict[str
         "count": len(documents),
         "documents": documents,
     }
+
+
+@app.get(
+    "/api/v1/procurements/{cnpj}/{year}/{sequence}/documents/{document_sequence}/content"
+)
+async def procurement_document_content(
+    cnpj: str, year: int, sequence: int, document_sequence: int
+) -> Response:
+    try:
+        content, content_type = await app.state.pncp.download_contracting_document(
+            cnpj=cnpj,
+            year=year,
+            sequence=sequence,
+            document_sequence=document_sequence,
+            max_bytes=settings.pncp_max_document_bytes,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except PNCPError as exc:
+        status_code = 413 if "excede o limite" in str(exc) else 502
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+
+    digest = hashlib.sha256(content).hexdigest()
+    safe_content_type = (
+        content_type
+        if content_type.startswith(("application/", "image/", "text/"))
+        else "application/octet-stream"
+    )
+    filename = f"pncp-{cnpj}-{year}-{sequence}-{document_sequence}"
+    return Response(
+        content=content,
+        media_type=safe_content_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "X-Content-SHA256": digest,
+            "X-Content-Length": str(len(content)),
+            "X-Document-Source": "PNCP",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 @app.get("/api/v1/opportunities/open")

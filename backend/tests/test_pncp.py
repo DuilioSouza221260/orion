@@ -451,3 +451,85 @@ async def test_contracting_documents_rejects_unexpected_response_shape():
         await client.contracting_documents(
             cnpj="10000000000003", year=2026, sequence=15
         )
+
+
+@pytest.mark.asyncio
+async def test_download_contracting_document_uses_official_endpoint_and_returns_hashable_bytes():
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        captured["accept"] = request.headers["accept"]
+        return httpx.Response(
+            200,
+            content=b"%PDF-1.7 test",
+            headers={"content-type": "application/pdf"},
+        )
+
+    client = PNCPClient(
+        "https://pncp.gov.br/api/consulta",
+        domain_base_url="https://pncp.gov.br/api/pncp",
+        transport=httpx.MockTransport(handler),
+    )
+    content, content_type = await client.download_contracting_document(
+        cnpj="10000000000003",
+        year=2026,
+        sequence=15,
+        document_sequence=3,
+    )
+
+    assert captured["url"].endswith(
+        "/v1/orgaos/10000000000003/compras/2026/15/arquivos/3"
+    )
+    assert captured["accept"] == "*/*"
+    assert content == b"%PDF-1.7 test"
+    assert content_type == "application/pdf"
+
+
+@pytest.mark.asyncio
+async def test_download_contracting_document_enforces_maximum_size():
+    client = PNCPClient(
+        "https://pncp.gov.br/api/consulta",
+        domain_base_url="https://pncp.gov.br/api/pncp",
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(200, content=b"0123456789")
+        ),
+    )
+    with pytest.raises(PNCPError, match="excede o limite"):
+        await client.download_contracting_document(
+            cnpj="10000000000003",
+            year=2026,
+            sequence=15,
+            document_sequence=3,
+            max_bytes=5,
+        )
+
+
+@pytest.mark.asyncio
+async def test_download_contracting_document_rejects_empty_file():
+    client = PNCPClient(
+        "https://pncp.gov.br/api/consulta",
+        domain_base_url="https://pncp.gov.br/api/pncp",
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(200, content=b"")
+        ),
+    )
+    with pytest.raises(PNCPError, match="documento vazio"):
+        await client.download_contracting_document(
+            cnpj="10000000000003",
+            year=2026,
+            sequence=15,
+            document_sequence=3,
+        )
+
+
+@pytest.mark.asyncio
+async def test_download_contracting_document_rejects_invalid_document_sequence():
+    client = PNCPClient("https://pncp.gov.br/api/consulta")
+    with pytest.raises(ValueError, match="sequencial do documento"):
+        await client.download_contracting_document(
+            cnpj="10000000000003",
+            year=2026,
+            sequence=15,
+            document_sequence=0,
+        )
