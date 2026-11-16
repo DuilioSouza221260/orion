@@ -12,15 +12,15 @@
 - [x] Persistência PostgreSQL inicial com payload JSONB, hash SHA-256 e chave única por fonte/identificador.
 - [x] Comando de coleta manual de propostas abertas e gravação via upsert.
 - [x] Migração SQL inicial e testes automatizados para paginação e hash.
-- [x] Workflow GitHub Actions para lint e testes.
+- [x] Workflow GitHub Actions para lint e testes (última execução confirmada verde).
 
 ## Evidência e limites
 
-Os arquivos foram gravados e relidos do repositório. Isso confirma versionamento, não execução. Não há confirmação de CI verde, conexão com PostgreSQL, consulta real ao PNCP ou homologação ponta a ponta. O coletor atual cobre a rota de propostas abertas; ainda não é uma varredura histórica completa de todas as modalidades.
+A execução CI 43949504992 foi concluída com sucesso: Ruff aprovado e 13 testes automatizados aprovados. Isso valida lint e testes unitários/contratuais simulados, mas não confirma conexão com PostgreSQL, consulta real ao PNCP ou homologação ponta a ponta. O coletor atual cobre a rota de propostas abertas; ainda não é uma varredura histórica completa de todas as modalidades.
 
 ## Pendente
 
-- [ ] Confirmar execução verde do workflow CI.
+- [x] Confirmar execução verde do workflow CI: Ruff aprovado e 13 testes aprovados na execução 43949504992.
 - [ ] Testar integração real com PNCP e validar schemas retornados.
 - [ ] Validar a semântica de todos os filtros e paginação nos endpoints atuais.
 - [ ] Implementar captura de publicações por modalidades ativas e atualizações globais.
@@ -32,7 +32,7 @@ Os arquivos foram gravados e relidos do repositório. Isso confirma versionament
 
 ## Próximo ciclo
 
-1. Executar o CI e corrigir qualquer falha detectada.
-2. Fazer teste real controlado do PNCP e ajustar o contrato do conector.
-3. Completar a coleta de publicações e atualizações com catálogo de modalidades validado.
-4. Acrescentar agendamento e histórico de alterações após validação da persistência.
+1. Executar teste real controlado do PNCP e validar o contrato dos dados recebidos.
+2. Completar a coleta de publicações e atualizações com catálogo de modalidades validado.
+3. Acrescentar agendamento, retentativas e checkpoints após validação da persistência.
+4. Validar persistência PostgreSQL real, concorrência e histórico de alterações.
