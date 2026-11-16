@@ -1,3 +1,4 @@
+from collections.abc import Awaitable, Callable
 from datetime import date
 from typing import Any
 
@@ -191,6 +192,8 @@ class PNCPClient:
         page_size: int = 50,
         uf: str | None = None,
         max_pages_per_modality: int = 100,
+        on_page: Callable[[int, int, list[dict[str, Any]]], Awaitable[None]] | None = None,
+        retain_records: bool = True,
     ) -> dict[str, Any]:
         """Sweep publication records across every active modality; report partial failures."""
         active_modalities = await self.modalities(active_only=True)
@@ -202,6 +205,12 @@ class PNCPClient:
         for modality in active_modalities:
             modality_id = modality["id"]
             try:
+                async def forward_page(
+                    page: int, page_records: list[dict[str, Any]]
+                ) -> None:
+                    if on_page is not None:
+                        await on_page(modality_id, page, page_records)
+
                 collection = await self.collect_published(
                     start_date=start_date,
                     end_date=end_date,
@@ -209,8 +218,11 @@ class PNCPClient:
                     page_size=page_size,
                     uf=uf,
                     max_pages=max_pages_per_modality,
+                    on_page=forward_page if on_page is not None else None,
+                    retain_records=retain_records,
                 )
-                records.extend(collection["data"])
+                if retain_records:
+                    records.extend(collection["data"])
                 results.append({
                     "modality_id": modality_id,
                     "modality_name": modality["nome"],
@@ -231,6 +243,7 @@ class PNCPClient:
 
         return {
             "data": records,
+            "records_collected": len(records) if retain_records else None,
             "modalities_discovered": len(active_modalities),
             "modalities_completed": sum(1 for item in results if item["collection_complete"]),
             "collection_complete": all(item["collection_complete"] for item in results),
@@ -321,6 +334,8 @@ class PNCPClient:
         page_size: int = 50,
         uf: str | None = None,
         max_pages: int = 100,
+        on_page: Callable[[int, list[dict[str, Any]]], Awaitable[None]] | None = None,
+        retain_records: bool = True,
     ) -> dict[str, Any]:
         """Collect publication pages for one modality with a hard safety ceiling."""
         if max_pages < 1:
@@ -346,7 +361,11 @@ class PNCPClient:
             page_records = payload.get("data", [])
             if not isinstance(page_records, list):
                 raise PNCPError("O PNCP retornou uma lista de oportunidades em formato inválido.")
-            records.extend(item for item in page_records if isinstance(item, dict))
+            valid_records = [item for item in page_records if isinstance(item, dict)]
+            if retain_records:
+                records.extend(valid_records)
+            if on_page is not None:
+                await on_page(page, valid_records)
 
             reported_pages = payload.get("totalPaginas")
             if isinstance(reported_pages, int) and not isinstance(reported_pages, bool):
@@ -363,6 +382,7 @@ class PNCPClient:
 
         return {
             "data": records,
+            "records_collected": len(records) if retain_records else None,
             "pages_collected": pages_collected,
             "source_total_pages": total_pages,
             "collection_complete": collection_complete,
@@ -402,6 +422,8 @@ class PNCPClient:
         page_size: int = 50,
         uf: str | None = None,
         max_pages: int = 100,
+        on_page: Callable[[int, list[dict[str, Any]]], Awaitable[None]] | None = None,
+        retain_records: bool = True,
     ) -> dict[str, Any]:
         """Collect globally updated contracts for one modality."""
         if max_pages < 1:
@@ -427,7 +449,11 @@ class PNCPClient:
             page_records = payload.get("data", [])
             if not isinstance(page_records, list):
                 raise PNCPError("O PNCP retornou uma lista de oportunidades em formato inválido.")
-            records.extend(item for item in page_records if isinstance(item, dict))
+            valid_records = [item for item in page_records if isinstance(item, dict)]
+            if retain_records:
+                records.extend(valid_records)
+            if on_page is not None:
+                await on_page(page, valid_records)
 
             reported_pages = payload.get("totalPaginas")
             if isinstance(reported_pages, int) and not isinstance(reported_pages, bool):
@@ -444,6 +470,7 @@ class PNCPClient:
 
         return {
             "data": records,
+            "records_collected": len(records) if retain_records else None,
             "pages_collected": pages_collected,
             "source_total_pages": total_pages,
             "collection_complete": collection_complete,
@@ -457,6 +484,8 @@ class PNCPClient:
         page_size: int = 50,
         uf: str | None = None,
         max_pages_per_modality: int = 100,
+        on_page: Callable[[int, int, list[dict[str, Any]]], Awaitable[None]] | None = None,
+        retain_records: bool = True,
     ) -> dict[str, Any]:
         """Sweep globally updated contracts across all active modalities."""
         active_modalities = await self.modalities(active_only=True)
@@ -468,6 +497,12 @@ class PNCPClient:
         for modality in active_modalities:
             modality_id = modality["id"]
             try:
+                async def forward_page(
+                    page: int, page_records: list[dict[str, Any]]
+                ) -> None:
+                    if on_page is not None:
+                        await on_page(modality_id, page, page_records)
+
                 collection = await self.collect_updated(
                     start_date=start_date,
                     end_date=end_date,
@@ -475,8 +510,11 @@ class PNCPClient:
                     page_size=page_size,
                     uf=uf,
                     max_pages=max_pages_per_modality,
+                    on_page=forward_page if on_page is not None else None,
+                    retain_records=retain_records,
                 )
-                records.extend(collection["data"])
+                if retain_records:
+                    records.extend(collection["data"])
                 results.append({
                     "modality_id": modality_id,
                     "modality_name": modality["nome"],
@@ -497,6 +535,7 @@ class PNCPClient:
 
         return {
             "data": records,
+            "records_collected": len(records) if retain_records else None,
             "modalities_discovered": len(active_modalities),
             "modalities_completed": sum(1 for item in results if item["collection_complete"]),
             "collection_complete": all(item["collection_complete"] for item in results),

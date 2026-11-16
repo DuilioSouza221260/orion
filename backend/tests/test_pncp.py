@@ -533,3 +533,91 @@ async def test_download_contracting_document_rejects_invalid_document_sequence()
             sequence=15,
             document_sequence=0,
         )
+
+
+@pytest.mark.asyncio
+async def test_collect_all_published_streams_each_page_without_retaining_records():
+    persisted = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/v1/modalidades"):
+            return httpx.Response(
+                200,
+                json=[{"id": 6, "nome": "Pregão", "statusAtivo": True}],
+            )
+        page = int(request.url.params["pagina"])
+        return httpx.Response(
+            200,
+            json={
+                "data": [{"numeroControlePNCP": f"PUB-{page}"}],
+                "totalPaginas": 2,
+            },
+        )
+
+    async def on_page(modality_id, page, records):
+        persisted.append((modality_id, page, records))
+
+    client = PNCPClient(
+        "https://pncp.gov.br/api/consulta",
+        transport=httpx.MockTransport(handler),
+    )
+    result = await client.collect_all_published(
+        start_date=date(2026, 11, 1),
+        end_date=date(2026, 11, 16),
+        page_size=10,
+        on_page=on_page,
+        retain_records=False,
+    )
+
+    assert [(modality, page) for modality, page, _ in persisted] == [(6, 1), (6, 2)]
+    assert [records[0]["numeroControlePNCP"] for _, _, records in persisted] == [
+        "PUB-1",
+        "PUB-2",
+    ]
+    assert result["data"] == []
+    assert result["records_collected"] is None
+    assert result["collection_complete"] is True
+
+
+@pytest.mark.asyncio
+async def test_collect_all_updated_streams_pages_without_retaining_records():
+    persisted = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/v1/modalidades"):
+            return httpx.Response(
+                200,
+                json=[{"id": 6, "nome": "Pregão", "statusAtivo": True}],
+            )
+        page = int(request.url.params["pagina"])
+        return httpx.Response(
+            200,
+            json={
+                "data": [{"numeroControlePNCP": f"UPD-{page}"}],
+                "totalPaginas": 2,
+            },
+        )
+
+    async def on_page(modality_id, page, records):
+        persisted.append((modality_id, page, records))
+
+    client = PNCPClient(
+        "https://pncp.gov.br/api/consulta",
+        transport=httpx.MockTransport(handler),
+    )
+    result = await client.collect_all_updated(
+        start_date=date(2026, 11, 1),
+        end_date=date(2026, 11, 16),
+        page_size=10,
+        on_page=on_page,
+        retain_records=False,
+    )
+
+    assert [(modality, page) for modality, page, _ in persisted] == [(6, 1), (6, 2)]
+    assert [records[0]["numeroControlePNCP"] for _, _, records in persisted] == [
+        "UPD-1",
+        "UPD-2",
+    ]
+    assert result["data"] == []
+    assert result["records_collected"] is None
+    assert result["collection_complete"] is True

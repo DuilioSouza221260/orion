@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+import json
 import sys
 from datetime import UTC, date, datetime
 from typing import Any
@@ -16,26 +17,44 @@ async def run(
     max_pages_per_modality: int,
     page_size: int,
     uf: str | None,
+    client: Any | None = None,
+    session_factory: Any | None = None,
 ) -> dict[str, Any]:
-    client = PNCPClient(
+    client = client or PNCPClient(
         base_url=settings.pncp_base_url,
         domain_base_url=settings.pncp_domain_base_url,
         timeout_seconds=settings.pncp_timeout_seconds,
         max_page_size=settings.pncp_max_page_size,
     )
+    factory = session_factory or require_session_factory()
+    persisted = {
+        "received": 0,
+        "inserted_or_updated": 0,
+        "versions_created": 0,
+        "skipped_without_id": 0,
+    }
+
+    async def persist_page(
+        modality_id: int, page: int, records: list[dict[str, Any]]
+    ) -> None:
+        if not records:
+            return
+        async with factory() as session:
+            result = await upsert_pncp_opportunities(
+                session, records, source_endpoint="pncp:publicacao"
+            )
+        for key in persisted:
+            persisted[key] += result[key]
+
     collection = await client.collect_all_published(
         start_date=start_date,
         end_date=end_date,
         max_pages_per_modality=max_pages_per_modality,
         page_size=page_size,
         uf=uf,
+        on_page=persist_page,
+        retain_records=False,
     )
-
-    session_factory = require_session_factory()
-    async with session_factory() as session:
-        persisted = await upsert_pncp_opportunities(
-            session, collection["data"], source_endpoint="pncp:publicacao"
-        )
 
     return {
         "source": "PNCP",
@@ -70,7 +89,7 @@ def main() -> None:
             uf=args.uf,
         )
     )
-    print(result)
+    print(json.dumps(result, ensure_ascii=False, sort_keys=True))
     if not result["collection_complete"]:
         sys.exit(2)
 
