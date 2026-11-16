@@ -7,7 +7,7 @@ from sqlalchemy import update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from orion_api.models import DocumentAsset, Opportunity
+from orion_api.models import DocumentAsset, Opportunity, OpportunityVersion
 
 
 def _payload_hash(payload: dict[str, Any]) -> str:
@@ -18,6 +18,8 @@ def _payload_hash(payload: dict[str, Any]) -> str:
 async def upsert_pncp_opportunities(
     session: AsyncSession,
     records: list[dict[str, Any]],
+    *,
+    source_endpoint: str = "pncp:unknown",
 ) -> dict[str, int]:
     now = datetime.now(UTC)
     prepared_by_id: dict[str, dict[str, Any]] = {}
@@ -38,7 +40,12 @@ async def upsert_pncp_opportunities(
 
     prepared = list(prepared_by_id.values())
     if not prepared:
-        return {"received": len(records), "inserted_or_updated": 0, "skipped_without_id": skipped}
+        return {
+            "received": len(records),
+            "inserted_or_updated": 0,
+            "versions_created": 0,
+            "skipped_without_id": skipped,
+        }
 
     statement = insert(Opportunity).values(prepared)
     statement = statement.on_conflict_do_update(
@@ -48,12 +55,42 @@ async def upsert_pncp_opportunities(
             "raw_payload": statement.excluded.raw_payload,
             "last_seen_at": statement.excluded.last_seen_at,
         },
+        where=Opportunity.payload_hash.is_distinct_from(statement.excluded.payload_hash),
+    ).returning(
+        Opportunity.id,
+        Opportunity.payload_hash,
+        Opportunity.raw_payload,
     )
-    result = await session.execute(statement)
+    changed = (await session.execute(statement)).mappings().all()
+
+    # A unchanged record must still update last_seen_at without creating a version.
+    await session.execute(
+        update(Opportunity)
+        .where(
+            Opportunity.source == "PNCP",
+            Opportunity.external_id.in_(list(prepared_by_id)),
+        )
+        .values(last_seen_at=now)
+    )
+
+    if changed:
+        versions = [
+            {
+                "opportunity_id": row["id"],
+                "payload_hash": row["payload_hash"],
+                "raw_payload": row["raw_payload"],
+                "source_endpoint": source_endpoint[:120],
+                "observed_at": now,
+            }
+            for row in changed
+        ]
+        await session.execute(insert(OpportunityVersion).values(versions))
+
     await session.commit()
     return {
         "received": len(records),
-        "inserted_or_updated": result.rowcount or 0,
+        "inserted_or_updated": len(changed),
+        "versions_created": len(changed),
         "skipped_without_id": skipped,
     }
 

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String, UniqueConstraint, func
+from sqlalchemy import DateTime, ForeignKey, Integer, String, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -25,6 +25,21 @@ class Opportunity(Base):
     )
     last_seen_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class OpportunityVersion(Base):
+    __tablename__ = "opportunity_versions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    opportunity_id: Mapped[int] = mapped_column(
+        ForeignKey("opportunities.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    payload_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    raw_payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    source_endpoint: Mapped[str] = mapped_column(String(120), nullable=False)
+    observed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
     )
 
 

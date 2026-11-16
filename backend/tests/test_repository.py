@@ -6,16 +6,85 @@ from orion_api.repository import _payload_hash
 def test_payload_hash_is_stable_for_different_key_order():
     first = {"nome": "Pregão", "valor": 1200, "orgao": {"cnpj": "123"}}
     second = {"orgao": {"cnpj": "123"}, "valor": 1200, "nome": "Pregão"}
-
     assert _payload_hash(first) == _payload_hash(second)
 
 
 def test_payload_hash_changes_when_source_payload_changes():
     first = {"numeroControlePNCP": "A", "situacao": "aberta"}
     second = {"numeroControlePNCP": "A", "situacao": "encerrada"}
-
     assert _payload_hash(first) != _payload_hash(second)
 
+
+@pytest.mark.asyncio
+async def test_opportunity_upsert_records_version_for_new_or_changed_payload():
+    from orion_api.repository import upsert_pncp_opportunities
+
+    payload = {"numeroControlePNCP": "A", "situacao": "aberta"}
+
+    class Result:
+        def mappings(self):
+            return self
+
+        def all(self):
+            return [{"id": 41, "payload_hash": _payload_hash(payload), "raw_payload": payload}]
+
+    class FakeSession:
+        def __init__(self):
+            self.statements = []
+            self.committed = False
+
+        async def execute(self, statement):
+            self.statements.append(statement)
+            return Result() if len(self.statements) == 1 else object()
+
+        async def commit(self):
+            self.committed = True
+
+    session = FakeSession()
+    result = await upsert_pncp_opportunities(
+        session, [payload], source_endpoint="pncp:publicacao"
+    )
+
+    assert result == {
+        "received": 1,
+        "inserted_or_updated": 1,
+        "versions_created": 1,
+        "skipped_without_id": 0,
+    }
+    assert len(session.statements) == 3
+    assert "opportunity_versions" in str(session.statements[2])
+    assert session.committed
+
+
+@pytest.mark.asyncio
+async def test_unchanged_opportunity_updates_seen_timestamp_without_new_version():
+    from orion_api.repository import upsert_pncp_opportunities
+
+    class Result:
+        def mappings(self):
+            return self
+
+        def all(self):
+            return []
+
+    class FakeSession:
+        def __init__(self):
+            self.statements = []
+
+        async def execute(self, statement):
+            self.statements.append(statement)
+            return Result() if len(self.statements) == 1 else object()
+
+        async def commit(self):
+            pass
+
+    session = FakeSession()
+    result = await upsert_pncp_opportunities(
+        session, [{"numeroControlePNCP": "A", "situacao": "aberta"}]
+    )
+    assert result["inserted_or_updated"] == 0
+    assert result["versions_created"] == 0
+    assert len(session.statements) == 2
 
 
 def test_document_sha256_validation_accepts_hex_digest():
@@ -77,7 +146,6 @@ async def test_s3_storage_uploads_content_addressed_object_once():
     client = FakeS3()
     store = S3ObjectStore(bucket="orion-test", client=client)
     content = b"edital de teste"
-
     first = await store.store(content=content, content_type="application/pdf")
     second = await store.store(content=content, content_type="application/pdf")
 

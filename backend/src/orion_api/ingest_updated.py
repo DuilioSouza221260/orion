@@ -33,7 +33,7 @@ async def run(
 
     session_factory = require_session_factory()
     async with session_factory() as session:
-        persisted = await upsert_pncp_opportunities(session, collection["data"])
+        persisted = await upsert_pncp_opportunities(\n            session, collection["data"], source_endpoint="pncp:atualizacao"\n        )
 
     return {
         "source": "PNCP",
