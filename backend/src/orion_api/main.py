@@ -8,7 +8,12 @@ from fastapi import FastAPI, HTTPException, Query, Response
 from orion_api.config import settings
 from orion_api.db import require_session_factory
 from orion_api.pncp import PNCPClient, PNCPError
-from orion_api.repository import (\n    get_document_asset_versions,\n    get_document_sync_operation,\n    get_opportunity_versions,\n    list_document_sync_operations,\n)
+from orion_api.repository import (
+    get_document_asset_versions,
+    get_document_sync_operation,
+    get_opportunity_versions,
+    list_document_sync_operations,
+)
 
 
 @asynccontextmanager
