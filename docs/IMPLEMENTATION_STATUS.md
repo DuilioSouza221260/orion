@@ -6,17 +6,17 @@
 
 - [x] Repositório privado e acesso de escrita confirmado.
 - [x] Backend FastAPI com rota de saúde e consulta de oportunidades.
-- [x] Cliente PNCP para propostas abertas, publicações por período e catálogo de modalidades ativas.
+- [x] Cliente PNCP para propostas abertas, publicações, atualizações globais, catálogo de modalidades, detalhes de contratação e metadados de documentos.
 - [x] Busca nacional por padrão, com filtro opcional por UF.
 - [x] Paginação limitada para propostas abertas e publicações por modalidade, com sinalização de coleta incompleta.
 - [x] Persistência PostgreSQL inicial com payload JSONB, hash SHA-256 e chave única por fonte/identificador.
 - [x] Comandos de coleta manual de propostas abertas e publicações de todas as modalidades ativas, com gravação via upsert.
-- [x] Rota de referência para modalidades e testes automatizados para paginação, catálogo, varredura parcial, contrato da API e hash.
+- [x] Rotas de referência, detalhe da contratação e listagem de documentos; testes automatizados para paginação, catálogo, varredura parcial, referências, documentos, contrato da API e hash.
 - [x] Workflow GitHub Actions para lint e testes (última execução confirmada verde).
 
 ## Evidência e limites
 
-A execução CI 43950130869 concluiu Lint (Ruff) com sucesso e 19 testes automatizados aprovados. Isso valida lint e testes unitários/contratuais simulados, mas não confirma conexão com PostgreSQL, consulta real ao PNCP ou homologação ponta a ponta. A varredura automatizada do catálogo de modalidades está implementada; sua operação contra o serviço real ainda precisa ser homologada.
+A execução CI 43950757649 concluiu Lint (Ruff) e testes com sucesso, com 22 testes aprovados antes da inclusão da consulta de detalhes/documentos. A nova execução CI desta entrega deverá confirmar a contagem atualizada. Os testes são unitários/contratuais simulados: não confirmam conexão com PostgreSQL, consulta real ao PNCP nem homologação ponta a ponta.
 
 ## Pendente
 
@@ -26,13 +26,15 @@ A execução CI 43950130869 concluiu Lint (Ruff) com sucesso e 19 testes automat
 - [ ] Homologar o catálogo e a varredura nacional contra o PNCP real; implementar captura global de atualizações.
 - [ ] Implementar agendamento, retentativas com backoff e checkpoint de coleta.
 - [ ] Validar persistência em PostgreSQL real e deduplicação em concorrência.
-- [ ] Implementar histórico de alterações, download de editais/anexos e armazenamento de objetos.
+- [x] Consultar detalhes de contratação e listar metadados dos documentos publicados.
+- [ ] Baixar editais/anexos, validar tipos/tamanhos, calcular hash e armazenar objetos com trilha de auditoria.
+- [ ] Implementar histórico de alterações completo da contratação e dos documentos.
 - [ ] Construir interface web e autenticação multi-organização.
 - [ ] Implantar em nuvem, configurar monitoramento, backups e homologar o fluxo ponta a ponta.
 
 ## Próximo ciclo
 
-1. Executar teste real controlado do PNCP e validar o contrato dos dados recebidos.
-2. Completar a coleta de publicações e atualizações com catálogo de modalidades validado.
-3. Acrescentar agendamento, retentativas e checkpoints após validação da persistência.
-4. Validar persistência PostgreSQL real, concorrência e histórico de alterações.
+1. Executar teste real controlado do PNCP para detalhes e documentos, confirmando os schemas e URLs retornados.
+2. Implementar download seguro dos anexos e armazenamento de objetos com hash, tamanho, MIME e deduplicação.
+3. Implementar histórico da contratação, itens e documentos.
+4. Acrescentar agendamento, retentativas e checkpoints após validação da persistência PostgreSQL.

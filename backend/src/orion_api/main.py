@@ -41,6 +41,41 @@ async def contracting_modalities(active_only: bool = True) -> dict[str, Any]:
     }
 
 
+@app.get("/api/v1/procurements/{cnpj}/{year}/{sequence}")
+async def procurement_detail(cnpj: str, year: int, sequence: int) -> dict[str, Any]:
+    try:
+        data = await app.state.pncp.contracting_detail(
+            cnpj=cnpj, year=year, sequence=sequence
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except PNCPError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return {
+        "source": "PNCP",
+        "retrieved_at": datetime.now(UTC).isoformat(),
+        "data": data,
+    }
+
+
+@app.get("/api/v1/procurements/{cnpj}/{year}/{sequence}/documents")
+async def procurement_documents(cnpj: str, year: int, sequence: int) -> dict[str, Any]:
+    try:
+        documents = await app.state.pncp.contracting_documents(
+            cnpj=cnpj, year=year, sequence=sequence
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except PNCPError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return {
+        "source": "PNCP",
+        "retrieved_at": datetime.now(UTC).isoformat(),
+        "count": len(documents),
+        "documents": documents,
+    }
+
+
 @app.get("/api/v1/opportunities/open")
 async def open_opportunities(
     end_date: date = Query(..., description="Data final da consulta"),  # noqa: B008

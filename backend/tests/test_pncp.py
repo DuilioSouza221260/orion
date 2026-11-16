@@ -372,3 +372,82 @@ async def test_collect_all_updated_continues_after_modality_failure():
     assert result["collection_complete"] is False
     assert [item["numeroControlePNCP"] for item in result["data"]] == ["UPD-6"]
     assert result["modality_results"][1]["error"]
+
+
+
+@pytest.mark.asyncio
+async def test_contracting_detail_uses_official_reference_path():
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        return httpx.Response(200, json={"numeroControlePNCP": "PNCP-DETAIL"})
+
+    client = PNCPClient(
+        "https://pncp.gov.br/api/consulta",
+        domain_base_url="https://pncp.gov.br/api/pncp",
+        transport=httpx.MockTransport(handler),
+    )
+    result = await client.contracting_detail(
+        cnpj="10000000000003", year=2026, sequence=15
+    )
+
+    assert result["numeroControlePNCP"] == "PNCP-DETAIL"
+    assert captured["url"].endswith("/v1/orgaos/10000000000003/compras/2026/15")
+
+
+@pytest.mark.asyncio
+async def test_contracting_documents_accepts_document_list_and_preserves_metadata():
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        return httpx.Response(
+            200,
+            json={
+                "documentos": [
+                    {
+                        "sequencialDocumento": 3,
+                        "url": "https://pncp.gov.br/documento/3",
+                        "tipoDocumentoNome": "Edital",
+                        "titulo": "Edital do certame",
+                    }
+                ]
+            },
+        )
+
+    client = PNCPClient(
+        "https://pncp.gov.br/api/consulta",
+        domain_base_url="https://pncp.gov.br/api/pncp",
+        transport=httpx.MockTransport(handler),
+    )
+    result = await client.contracting_documents(
+        cnpj="10000000000003", year=2026, sequence=15
+    )
+
+    assert captured["url"].endswith(
+        "/v1/orgaos/10000000000003/compras/2026/15/arquivos"
+    )
+    assert result[0]["sequencialDocumento"] == 3
+    assert result[0]["tipoDocumentoNome"] == "Edital"
+
+
+@pytest.mark.asyncio
+async def test_contracting_reference_rejects_invalid_cnpj_before_request():
+    client = PNCPClient("https://pncp.gov.br/api/consulta")
+    with pytest.raises(ValueError, match="14 dígitos"):
+        await client.contracting_documents(cnpj="123", year=2026, sequence=1)
+
+
+@pytest.mark.asyncio
+async def test_contracting_documents_rejects_unexpected_response_shape():
+    client = PNCPClient(
+        "https://pncp.gov.br/api/consulta",
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(200, json={"data": "not-a-list"})
+        ),
+    )
+    with pytest.raises(PNCPError, match="lista de documentos em formato inesperado"):
+        await client.contracting_documents(
+            cnpj="10000000000003", year=2026, sequence=15
+        )

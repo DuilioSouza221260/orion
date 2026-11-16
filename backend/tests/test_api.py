@@ -102,3 +102,66 @@ async def test_reference_modalities_returns_active_catalog(monkeypatch: pytest.M
     assert response.status_code == 200
     assert response.json()["count"] == 1
     assert response.json()["data"][0]["id"] == 6
+
+
+
+@pytest.mark.asyncio
+async def test_procurement_detail_endpoint_returns_pncp_record(monkeypatch: pytest.MonkeyPatch):
+    async def contracting_detail(**kwargs: Any) -> dict[str, Any]:
+        assert kwargs == {"cnpj": "10000000000003", "year": 2026, "sequence": 15}
+        return {"numeroControlePNCP": "PNCP-DETAIL"}
+
+    monkeypatch.setattr(
+        app.state,
+        "pncp",
+        SimpleNamespace(contracting_detail=contracting_detail),
+        raising=False,
+    )
+
+    response = await request_api("/api/v1/procurements/10000000000003/2026/15")
+
+    assert response.status_code == 200
+    assert response.json()["data"]["numeroControlePNCP"] == "PNCP-DETAIL"
+
+
+@pytest.mark.asyncio
+async def test_procurement_documents_endpoint_returns_document_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    async def contracting_documents(**kwargs: Any) -> list[dict[str, Any]]:
+        assert kwargs == {"cnpj": "10000000000003", "year": 2026, "sequence": 15}
+        return [{"sequencialDocumento": 3, "tipoDocumentoNome": "Edital"}]
+
+    monkeypatch.setattr(
+        app.state,
+        "pncp",
+        SimpleNamespace(contracting_documents=contracting_documents),
+        raising=False,
+    )
+
+    response = await request_api(
+        "/api/v1/procurements/10000000000003/2026/15/documents"
+    )
+
+    assert response.status_code == 200
+    assert response.json()["count"] == 1
+    assert response.json()["documents"][0]["tipoDocumentoNome"] == "Edital"
+
+
+@pytest.mark.asyncio
+async def test_procurement_detail_endpoint_maps_invalid_reference_to_422(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    async def contracting_detail(**kwargs: Any) -> dict[str, Any]:
+        raise ValueError("CNPJ inválido.")
+
+    monkeypatch.setattr(
+        app.state,
+        "pncp",
+        SimpleNamespace(contracting_detail=contracting_detail),
+        raising=False,
+    )
+
+    response = await request_api("/api/v1/procurements/invalid/2026/15")
+
+    assert response.status_code == 422

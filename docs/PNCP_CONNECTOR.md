@@ -11,7 +11,17 @@ Base URL: `https://pncp.gov.br/api/consulta`
 - `GET /v1/contratacoes/publicacao`: publicações por período. O conector envia `dataInicial`, `dataFinal`, `codigoModalidadeContratacao` e `pagina`.
 - `GET /v1/contratacoes/atualizacao`: contratações alteradas no período, inclusive registros publicados anteriormente que receberam atualização. Usa `dataInicial`, `dataFinal`, `codigoModalidadeContratacao` e `pagina`.
 
-A busca nacional é o padrão: o filtro de UF só é enviado quando solicitado. A consulta por publicação exige modalidade. O catálogo de modalidades é consultado separadamente na API de integração, em `https://pncp.gov.br/api/pncp/v1/modalidades?statusAtivo=true`; não se deve chamar esse recurso pela base `/api/consulta`.
+A busca nacional é o padrão: o filtro de UF só é enviado quando solicitado. A consulta por publicação exige modalidade. O catálogo de modalidades e os recursos de detalhe/documentos são consultados na API de integração, em `https://pncp.gov.br/api/pncp`; não se deve chamar esses recursos pela base `/api/consulta`.
+
+## Detalhes e documentos de uma contratação
+
+A API de integração documenta os seguintes recursos para uma contratação identificada por CNPJ do órgão, ano e sequencial:
+
+- `GET /v1/orgaos/{cnpj}/compras/{ano}/{sequencial}`: dados completos da contratação.
+- `GET /v1/orgaos/{cnpj}/compras/{ano}/{sequencial}/arquivos`: metadados dos documentos publicados (sequencial, URL, tipo, título e data de publicação).
+- `GET /v1/orgaos/{cnpj}/compras/{ano}/{sequencial}/arquivos/{sequencialDocumento}`: download de um documento específico.
+
+O backend já disponibiliza as rotas de consulta dos detalhes e da lista de documentos. A transferência binária e a persistência dos arquivos em armazenamento de objetos serão implementadas em etapa própria; nesta entrega, o ORION retorna os metadados e a URL oficial fornecida pelo PNCP. O CNPJ, ano e sequencial são validados antes da chamada externa.
 
 ## Regras de implementação
 
@@ -26,7 +36,7 @@ A busca nacional é o padrão: o filtro de UF só é enviado quando solicitado. 
 
 ## Limites conhecidos
 
-O catálogo de modalidades ativas, a varredura de publicações e a varredura de atualizações globais por modalidade estão implementados. Falhas de uma modalidade são registradas no resultado sem ocultar as demais; a coleta global só é marcada completa quando todas terminam. O comando de ingestão de publicações persiste os resultados coletados no PostgreSQL e retorna código de saída 2 quando a varredura fica parcial. A integração real com o serviço PNCP e a persistência PostgreSQL ainda precisam de homologação operacional. O conector não baixa editais/anexos nem executa análise por IA.
+O catálogo de modalidades ativas, a varredura de publicações e de atualizações globais por modalidade, a consulta de detalhes de contratação e a listagem de documentos estão implementados. Falhas de uma modalidade são registradas no resultado sem ocultar as demais; a coleta global só é marcada completa quando todas terminam. O comando de ingestão de publicações persiste os resultados coletados no PostgreSQL e retorna código de saída 2 quando a varredura fica parcial. A integração real com o serviço PNCP e a persistência PostgreSQL ainda precisam de homologação operacional. O conector ainda não transfere os arquivos binários para armazenamento próprio nem executa análise por IA.
 
 
 ## Persistência inicial

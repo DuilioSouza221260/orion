@@ -33,23 +33,70 @@ class PNCPClient:
     def _date_param(value: date) -> str:
         return value.strftime("%Y%m%d")
 
-    async def _get(self, path: str, params: dict[str, Any]) -> dict[str, Any]:
+    async def _get_payload(
+        self,
+        *,
+        base_url: str,
+        path: str,
+        params: dict[str, Any] | None = None,
+    ) -> Any:
         try:
             async with httpx.AsyncClient(
-                base_url=self.base_url,
+                base_url=base_url,
                 timeout=self.timeout_seconds,
                 transport=self.transport,
                 headers={"Accept": "application/json", "User-Agent": "ORION/0.1"},
             ) as client:
                 response = await client.get(path, params=params)
                 response.raise_for_status()
-                payload = response.json()
+                return response.json()
         except (httpx.HTTPError, ValueError) as exc:
             raise PNCPError(f"Falha na consulta ao PNCP: {exc}") from exc
 
+    async def _get(self, path: str, params: dict[str, Any]) -> dict[str, Any]:
+        payload = await self._get_payload(base_url=self.base_url, path=path, params=params)
         if not isinstance(payload, dict):
             raise PNCPError("O PNCP retornou um formato JSON inesperado.")
         return payload
+
+    @staticmethod
+    def _validate_contract_reference(cnpj: str, year: int, sequence: int) -> None:
+        if len(cnpj) != 14 or not cnpj.isdigit():
+            raise ValueError("O CNPJ do órgão deve conter exatamente 14 dígitos.")
+        if not 2000 <= year <= 2100:
+            raise ValueError("O ano da contratação deve estar entre 2000 e 2100.")
+        if sequence < 1:
+            raise ValueError("O sequencial da contratação deve ser maior ou igual a 1.")
+
+    async def contracting_detail(
+        self, *, cnpj: str, year: int, sequence: int
+    ) -> dict[str, Any]:
+        """Fetch a single procurement record using its official PNCP coordinates."""
+        self._validate_contract_reference(cnpj, year, sequence)
+        payload = await self._get_payload(
+            base_url=self.domain_base_url,
+            path=f"/v1/orgaos/{cnpj}/compras/{year}/{sequence}",
+        )
+        if not isinstance(payload, dict):
+            raise PNCPError("O PNCP retornou os detalhes da contratação em formato inesperado.")
+        return payload
+
+    async def contracting_documents(
+        self, *, cnpj: str, year: int, sequence: int
+    ) -> list[dict[str, Any]]:
+        """List documents attached to a procurement; binary download is a separate step."""
+        self._validate_contract_reference(cnpj, year, sequence)
+        payload = await self._get_payload(
+            base_url=self.domain_base_url,
+            path=f"/v1/orgaos/{cnpj}/compras/{year}/{sequence}/arquivos",
+        )
+        if isinstance(payload, dict):
+            documents = payload.get("documentos")
+        else:
+            documents = payload
+        if not isinstance(documents, list) or any(not isinstance(item, dict) for item in documents):
+            raise PNCPError("O PNCP retornou a lista de documentos em formato inesperado.")
+        return documents
 
     async def modalities(self, *, active_only: bool = True) -> list[dict[str, Any]]:
         """Return PNCP contracting modalities from the integration API, not the query API."""
